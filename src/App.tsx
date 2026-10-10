@@ -4,6 +4,25 @@ import reactLogo from "./assets/react.svg";
 import viteLogo from "./assets/vite.svg";
 import "./App.css";
 
+type InventoryItem = {
+  id: number;
+  propertyTag: string;
+  serialNumber: string;
+  name: string;
+  location: string;
+  status: "Available" | "Issued";
+  custodian?: string;
+};
+
+type InventoryTransaction = {
+  id: string;
+  itemId: number;
+  propertyTag: string;
+  type: "Received" | "Issued" | "Returned" | "Transferred";
+  date: string;
+  details: string;
+};
+
 function App() {
   const [count, setCount] = useState(0);
   const [receiveForm, setReceiveForm] = useState({
@@ -22,25 +41,6 @@ function App() {
   const [issueError, setIssueError] = useState("");
 
   const [formError, setFormError] = useState("");
-
-  type InventoryItem = {
-    id: number;
-    propertyTag: string;
-    serialNumber: string;
-    name: string;
-    location: string;
-    status: "Available" | "Issued";
-    custodian?: string;
-  };
-
-  type InventoryTransaction = {
-    id: number;
-    itemId: number;
-    propertyTag: string;
-    type: "Received" | "Issued" | "Returned" | "Transferred";
-    date: string;
-    details: string;
-  };
 
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([
     {
@@ -83,6 +83,10 @@ function App() {
     const serialNumber = receiveForm.serialNumber.trim();
     const name = receiveForm.name.trim();
     const location = receiveForm.location.trim();
+    if (!propertyTag || !serialNumber || !name || !location) {
+      setFormError("Please complete all fields.");
+      return;
+    }
 
     const duplicateTag = inventoryItems.some(
       (item) => item.propertyTag.toLowerCase() === propertyTag.toLowerCase(),
@@ -107,11 +111,11 @@ function App() {
     setTransactions((currentTransactions) => [
       ...currentTransactions,
       {
-        id: Date.now(),
+        id: crypto.randomUUID(),
         itemId: newItem.id,
         propertyTag: newItem.propertyTag,
         type: "Received",
-        date: new Date().toLocaleString(),
+        date: new Date().toISOString(),
         details: `Received ${newItem.name} at ${newItem.location}`,
       },
     ]);
@@ -123,7 +127,7 @@ function App() {
       location: "",
     });
 
-    setSelectedItem(null);
+    setSelectedItemId(null);
     setFormError("");
   };
 
@@ -170,16 +174,16 @@ function App() {
     setTransactions((currentTransactions) => [
       ...currentTransactions,
       {
-        id: Date.now(),
+        id: crypto.randomUUID(),
         itemId: updatedItem.id,
         propertyTag: updatedItem.propertyTag,
         type: "Issued",
-        date: new Date().toLocaleString(),
+        date: new Date().toISOString(),
         details: `Issued to ${custodian} at ${location}`,
       },
     ]);
 
-    setSelectedItem(updatedItem);
+    setSelectedItemId(updatedItem.id);
 
     setIssueForm({
       propertyTag: "",
@@ -202,7 +206,9 @@ function App() {
   });
   const totalItems = inventoryItems.length;
   const visibleItems = filteredItems.length;
-  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
+  const selectedItem =
+    inventoryItems.find((item) => item.id === selectedItemId) ?? null;
 
   return (
     <>
@@ -376,6 +382,7 @@ function App() {
                   <th>Serial Number</th>
                   <th>Location</th>
                   <th>Status</th>
+                  <th>Custodian</th>
                 </tr>
               </thead>
               <tbody>
@@ -383,7 +390,7 @@ function App() {
                   filteredItems.map((item) => (
                     <tr
                       key={item.id}
-                      onClick={() => setSelectedItem(item)}
+                      onClick={() => setSelectedItemId(item.id)}
                       className="inventory-row"
                     >
                       <td>{item.propertyTag}</td>
@@ -391,11 +398,12 @@ function App() {
                       <td>{item.serialNumber}</td>
                       <td>{item.location}</td>
                       <td>{item.status}</td>
+                      <td>{item.custodian ?? "Not assigned"}</td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5}>No matching items found.</td>
+                    <td colSpan={6}>No matching items found.</td>
                   </tr>
                 )}
               </tbody>
@@ -451,8 +459,12 @@ function App() {
                 <p>
                   <strong>Status:</strong> {selectedItem.status}
                 </p>
+                <p>
+                  <strong>Custodian:</strong>{" "}
+                  {selectedItem.custodian ?? "Not assigned"}
+                </p>
 
-                <button type="button" onClick={() => setSelectedItem(null)}>
+                <button type="button" onClick={() => setSelectedItemId(null)}>
                   Close Details
                 </button>
               </section>
