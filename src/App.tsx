@@ -1,6 +1,11 @@
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import aceLogo from "./assets/ace-medical-center-bohol.png";
 import "./App.css";
+import { z } from "zod";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { NavLink, useLocation } from "react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 type AssetStatus =
   | "IN_STOCK"
@@ -13,13 +18,102 @@ type AssetStatus =
 type InventoryItem = {
   id: number;
   propertyTag: string;
-  serialNumber: string;
+  serialNumber: string | null;
   name: string;
   location: string;
   status: AssetStatus;
   condition: AssetCondition;
-  custodian?: string;
+  custodian?: string | null;
+
+  category?: string | null;
+  assetGroup?: string | null;
+  manufacturer?: string | null;
+  model?: string | null;
+  supplier?: string | null;
+  floor?: string | null;
+  area?: string | null;
+  department?: string | null;
+  acquisitionDate?: string | null;
+  acquisitionCost?: number | null;
+  araNo?: string | null;
+  remarks?: string | null;
+  originalTag?: string | null;
 };
+
+async function fetchInventoryItems(): Promise<InventoryItem[]> {
+  const response = await fetch("http://localhost:3000/inventoryItems");
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch inventory items.");
+  }
+
+  return response.json();
+}
+
+async function createInventoryItem(
+  item: Omit<InventoryItem, "id">,
+): Promise<InventoryItem> {
+  const response = await fetch("http://localhost:3000/inventoryItems", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(item),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to create inventory item.");
+  }
+
+  return response.json() as Promise<InventoryItem>;
+}
+
+async function updateInventoryItem(
+  id: number,
+  updates: Partial<InventoryItem>,
+): Promise<InventoryItem> {
+  const response = await fetch(`http://localhost:3000/inventoryItems/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(updates),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to update inventory item.");
+  }
+
+  return response.json() as Promise<InventoryItem>;
+}
+
+async function createInventoryTransaction(
+  transaction: InventoryTransaction,
+): Promise<InventoryTransaction> {
+  const response = await fetch("http://localhost:3000/transactions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(transaction),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to create inventory transaction.");
+  }
+
+  return response.json() as Promise<InventoryTransaction>;
+}
+
+async function fetchInventoryTransactions(): Promise<InventoryTransaction[]> {
+  const response = await fetch("http://localhost:3000/transactions");
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch inventory transactions.");
+  }
+
+  return response.json();
+}
 
 type InventoryTransaction = {
   id: string;
@@ -32,7 +126,8 @@ type InventoryTransaction = {
     | "Transferred"
     | "Borrowed"
     | "Pulled Out for Repair"
-    | "Repair Completed";
+    | "Repair Completed"
+    | "Edited";
   date: string;
   details: string;
 };
@@ -44,6 +139,8 @@ type AssetCondition =
   | "DEFECTIVE"
   | "UNKNOWN";
 
+type AppSection = "dashboard" | "inventory" | "transactions" | "actions";
+
 const statusLabels: Record<AssetStatus, string> = {
   IN_STOCK: "Available",
   ISSUED: "Issued",
@@ -53,98 +150,417 @@ const statusLabels: Record<AssetStatus, string> = {
   DISPOSED: "Disposed",
 };
 
+type ManageAssetAction =
+  | "receive"
+  | "issue"
+  | "borrow"
+  | "return"
+  | "pullOut"
+  | "repair";
+
+type InventorySearchProps = {
+  searchText: string;
+  onSearchChange: (value: string) => void;
+};
+
+type InventoryStatusFilterProps = {
+  statusFilter: "All" | AssetStatus;
+  onStatusFilterChange: (value: "All" | AssetStatus) => void;
+};
+
+type ItemDetailsProps = {
+  item: InventoryItem;
+  onClose: () => void;
+  onSave: (itemId: number, data: EditFormData) => Promise<boolean>;
+};
+
+const receiveSchema = z.object({
+  propertyTag: z.string().trim().min(1, "Property tag is required."),
+  serialNumber: z.string().trim().min(1, "Serial number is required."),
+  name: z.string().trim().min(1, "Item name is required."),
+  location: z.string().trim().min(1, "Location is required."),
+});
+
+const issueSchema = z.object({
+  propertyTag: z.string().trim().min(1, "Property tag is required."),
+  custodian: z.string().trim().min(1, "Custodian is required."),
+  location: z.string().trim().min(1, "Location is required."),
+});
+
+const borrowSchema = z.object({
+  propertyTag: z.string().trim().min(1, "Property tag is required."),
+  borrower: z.string().trim().min(1, "Borrowers name is required."),
+  location: z.string().trim().min(1, "Location is required."),
+});
+
+const returnSchema = z.object({
+  propertyTag: z.string().trim().min(1, "Select an item to return."),
+});
+
+const pullOutSchema = z.object({
+  propertyTag: z.string().trim().min(1, "Select an item to pull out."),
+  repairLocation: z.string().trim().min(1, "Repair location is required."),
+  reason: z.string().trim().min(1, "Repair reason is required."),
+});
+
+const repairSchema = z.object({
+  propertyTag: z.string().trim().min(1, "Select an item to complete repair."),
+});
+
+const editSchema = z.object({
+  propertyTag: z.string().trim().min(1, "Property tag is required."),
+  serialNumber: z.string().trim(),
+  name: z.string().trim().min(1, "Name is required."),
+  location: z.string().trim().min(1, "Location is required."),
+});
+
+type EditFormData = z.infer<typeof editSchema>;
+
+function InventorySearch({ searchText, onSearchChange }: InventorySearchProps) {
+  return (
+    <input
+      type="text"
+      aria-label="Search inventory"
+      placeholder="Search property tag or item name..."
+      value={searchText}
+      onChange={(event) => onSearchChange(event.target.value)}
+    />
+  );
+}
+
+function InventoryStatusFilter({
+  statusFilter,
+  onStatusFilterChange,
+}: InventoryStatusFilterProps) {
+  return (
+    <div className="status-filter">
+      <label htmlFor="status-filter">Filter by status:</label>
+
+      <select
+        id="status-filter"
+        value={statusFilter}
+        onChange={(event) =>
+          onStatusFilterChange(event.target.value as "All" | AssetStatus)
+        }
+      >
+        <option value="All">All Statuses</option>
+        <option value="IN_STOCK">Available</option>
+        <option value="ISSUED">Issued</option>
+        <option value="ON_LOAN">On Loan</option>
+        <option value="UNDER_REPAIR">Under Repair</option>
+        <option value="FOR_DISPOSAL">For Disposal</option>
+        <option value="DISPOSED">Disposed</option>
+      </select>
+    </div>
+  );
+}
+
+function ItemDetails({ item, onClose, onSave }: ItemDetailsProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const {
+    register: registerEdit,
+    handleSubmit: handleEditSubmit,
+    reset: resetEdit,
+    formState: { errors: editErrors },
+  } = useForm<EditFormData>({
+    resolver: zodResolver(editSchema),
+    defaultValues: {
+      propertyTag: item.propertyTag,
+      serialNumber: item.serialNumber ?? "",
+      name: item.name,
+      location: item.location,
+    },
+  });
+
+  const submitEditForm = async (data: EditFormData) => {
+    const didSave = await onSave(item.id, data);
+
+    if (didSave) {
+      resetEdit(data);
+      setIsEditing(false);
+    }
+  };
+
+  return (
+    <section className="item-details">
+      <h2>{isEditing ? "Edit Item" : "Item Details"}</h2>
+
+      {!isEditing && (
+        <>
+          <p>
+            <strong>Property Tag:</strong> {item.propertyTag}
+          </p>
+
+          <p>
+            <strong>Item Name:</strong> {item.name}
+          </p>
+
+          <p>
+            <strong>Serial Number:</strong> {item.serialNumber}
+          </p>
+
+          <p>
+            <strong>Location:</strong> {item.location}
+          </p>
+
+          <p>
+            <strong>Status:</strong> {statusLabels[item.status]}
+          </p>
+          <p>
+            <strong>Custodian:</strong> {item.custodian ?? "Not assigned"}
+          </p>
+        </>
+      )}
+
+      <div className="item-details-actions">
+        <button type="button" onClick={onClose}>
+          Close Details
+        </button>
+        {!isEditing && (
+          <button type="button" onClick={() => setIsEditing(true)}>
+            Edit Item
+          </button>
+        )}
+      </div>
+
+      {isEditing && (
+        <form
+          className="item-edit-form"
+          onSubmit={handleEditSubmit(submitEditForm)}
+        >
+              <label>
+                Property Tag
+                <input type="text" {...registerEdit("propertyTag")} />
+              </label>
+              {editErrors.propertyTag && (
+                <p role="alert">{editErrors.propertyTag.message}</p>
+              )}
+              <label>
+                Serial Number
+                <input type="text" {...registerEdit("serialNumber")} />
+              </label>
+              <label>
+                Item Name
+                <input type="text" {...registerEdit("name")} />
+              </label>
+              {editErrors.name && <p role="alert">{editErrors.name.message}</p>}
+              <label>
+                Location
+                <input type="text" {...registerEdit("location")} />
+              </label>
+              {editErrors.location && (
+                <p role="alert">{editErrors.location.message}</p>
+              )}
+              <button type="submit">Save Changes</button>
+        </form>
+      )}
+    </section>
+  );
+}
+
 function App() {
-  const [receiveForm, setReceiveForm] = useState({
-    propertyTag: "",
-    serialNumber: "",
-    name: "",
-    location: "",
-  });
-
-  const [issueForm, setIssueForm] = useState({
-    propertyTag: "",
-    custodian: "",
-    location: "",
-  });
-
-  const [returnForm, setReturnForm] = useState({
-    propertyTag: "",
-  });
-
-  const [borrowForm, setBorrowForm] = useState({
-    propertyTag: "",
-    borrower: "",
-    location: "",
-  });
-
-  const [pullOutForm, setPullOutForm] = useState({
-    propertyTag: "",
-    repairLocation: "",
-    reason: "",
-  });
-
-  const [repairForm, setRepairForm] = useState({
-    propertyTag: "",
-  });
-
   const [issueError, setIssueError] = useState("");
+  const [showIssueSuggestions, setShowIssueSuggestions] = useState(false);
 
   const [formError, setFormError] = useState("");
 
   const [borrowError, setBorrowError] = useState("");
+  const [showBorrowSuggestions, setShowBorrowSuggestions] = useState(false);
+
+  const [returnError, setReturnError] = useState("");
 
   const [pullOutError, setPullOutError] = useState("");
 
   const [repairError, setRepairError] = useState("");
 
-  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([
-    {
-      id: 1,
-      propertyTag: "DEMO-IT-001",
-      serialNumber: "SN-DEMO-001",
-      name: "Desktop Computer",
-      location: "MIS Office",
-      status: "IN_STOCK",
-      condition: "BRAND_NEW",
-    },
-    {
-      id: 2,
-      propertyTag: "DEMO-IT-002",
-      serialNumber: "SN-DEMO-002",
-      name: "Laptop",
-      location: "Admin Department",
-      status: "ISSUED",
-      condition: "SERVICEABLE",
-    },
-    {
-      id: 3,
-      propertyTag: "DEMO-IT-003",
-      serialNumber: "SN-DEMO-003",
-      name: "Network Printer",
-      location: "MIS Office",
-      status: "IN_STOCK",
-      condition: "BRAND_NEW",
-    },
-  ]);
+  const [editError, setEditError] = useState("");
 
-  const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
+  const {
+    register: registerReceive,
+    handleSubmit: handleReceiveSubmit,
+    reset: resetReceive,
+    formState: { errors: receiveErrors },
+  } = useForm({
+    resolver: zodResolver(receiveSchema),
+    defaultValues: {
+      propertyTag: "",
+      serialNumber: "",
+      name: "",
+      location: "",
+    },
+  });
+
+  const {
+    register: registerIssue,
+    handleSubmit: handleIssueSubmit,
+    reset: resetIssue,
+    formState: { errors: issueErrors },
+    watch: watchIssue,
+    setValue: setIssueValue,
+  } = useForm({
+    resolver: zodResolver(issueSchema),
+    defaultValues: {
+      propertyTag: "",
+      custodian: "",
+      location: "",
+    },
+  });
+
+  const {
+    register: registerBorrow,
+    handleSubmit: handleBorrowSubmit,
+    reset: resetBorrow,
+    watch: watchBorrow,
+    setValue: setBorrowValue,
+    formState: { errors: borrowErrors },
+  } = useForm({
+    resolver: zodResolver(borrowSchema),
+    defaultValues: {
+      propertyTag: "",
+      borrower: "",
+      location: "",
+    },
+  });
+
+  const {
+    register: registerReturn,
+    handleSubmit: handleReturnSubmit,
+    reset: resetReturn,
+    formState: { errors: returnErrors },
+  } = useForm({
+    resolver: zodResolver(returnSchema),
+    defaultValues: {
+      propertyTag: "",
+    },
+  });
+
+  const {
+    register: registerPullOut,
+    handleSubmit: handlePullOutSubmit,
+    reset: resetPullOut,
+    formState: { errors: pullOutErrors },
+  } = useForm({
+    resolver: zodResolver(pullOutSchema),
+    defaultValues: {
+      propertyTag: "",
+      repairLocation: "",
+      reason: "",
+    },
+  });
+
+  const {
+    register: registerRepair,
+    handleSubmit: handleRepairSubmit,
+    reset: resetRepair,
+    formState: { errors: repairErrors },
+  } = useForm({
+    resolver: zodResolver(repairSchema),
+    defaultValues: {
+      propertyTag: "",
+    },
+  });
+
   const [searchText, setSearchText] = useState("");
   const [statusFilter, setStatusFilter] = useState<"All" | AssetStatus>("All");
 
-  const handleReceiveItem = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const inventoryApiQuery = useQuery({
+    queryKey: ["inventoryItems"],
+    queryFn: fetchInventoryItems,
+  });
+
+  const transactionsApiQuery = useQuery({
+    queryKey: ["transactions"],
+    queryFn: fetchInventoryTransactions,
+  });
+
+  const apiInventoryItems = inventoryApiQuery.data ?? [];
+  const apiTransactions = transactionsApiQuery.data ?? [];
+
+  const issueSearchText = watchIssue("propertyTag").trim().toLowerCase();
+
+  const issueSuggestions = apiInventoryItems.filter((item) => {
+    const isAvailable = item.status === "IN_STOCK";
+    const matchesSearch =
+      item.propertyTag.toLowerCase().includes(issueSearchText) ||
+      item.name.toLowerCase().includes(issueSearchText);
+
+    return isAvailable && matchesSearch;
+  });
+
+  const borrowSearchText = watchBorrow("propertyTag").trim().toLowerCase();
+
+  const borrowSuggestions = apiInventoryItems.filter((item) => {
+    const isAvailable = item.status === "IN_STOCK";
+    const matchesSearch =
+      item.propertyTag.toLowerCase().includes(borrowSearchText) ||
+      item.name.toLowerCase().includes(borrowSearchText);
+
+    return isAvailable && matchesSearch;
+  });
+
+  const queryClient = useQueryClient();
+
+  const createInventoryMutation = useMutation({
+    mutationFn: createInventoryItem,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["inventoryItems"] }),
+  });
+
+  const createTransactionMutation = useMutation({
+    mutationFn: createInventoryTransaction,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["transactions"] }),
+  });
+
+  const updateInventoryMutation = useMutation({
+    mutationFn: ({
+      id,
+      updates,
+    }: {
+      id: number;
+      updates: Partial<InventoryItem>;
+    }) => updateInventoryItem(id, updates),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["inventoryItems"] }),
+  });
+
+  const handleEditItem = async (
+    itemId: number,
+    data: EditFormData,
+  ): Promise<boolean> => {
+    setEditError("");
+
+    try {
+      const updatedItem = await updateInventoryMutation.mutateAsync({
+        id: itemId,
+        updates: data,
+      });
+
+      await createTransactionMutation.mutateAsync({
+        id: crypto.randomUUID(),
+        itemId: updatedItem.id,
+        propertyTag: updatedItem.propertyTag,
+        type: "Edited",
+        date: new Date().toISOString(),
+        details: `Edited ${updatedItem.name}`,
+      });
+
+      return true;
+    } catch {
+      setEditError(
+        "Could not complete the edit. Check JSON Server. The item may have updated before the history entry failed.",
+      );
+
+      return false;
+    }
+  };
+
+  const handleReceiveItem = async (data: z.infer<typeof receiveSchema>) => {
     setFormError("");
 
-    const propertyTag = receiveForm.propertyTag.trim();
-    const serialNumber = receiveForm.serialNumber.trim();
-    const name = receiveForm.name.trim();
-    const location = receiveForm.location.trim();
-    if (!propertyTag || !serialNumber || !name || !location) {
-      setFormError("Please complete all fields.");
-      return;
-    }
+    const { propertyTag, serialNumber, name, location } = data;
 
-    const duplicateTag = inventoryItems.some(
+    const duplicateTag = apiInventoryItems.some(
       (item) => item.propertyTag.toLowerCase() === propertyTag.toLowerCase(),
     );
 
@@ -153,8 +569,7 @@ function App() {
       return;
     }
 
-    const newItem: InventoryItem = {
-      id: Math.max(0, ...inventoryItems.map((item) => item.id)) + 1,
+    const itemToCreate: Omit<InventoryItem, "id"> = {
       propertyTag,
       serialNumber,
       name,
@@ -163,45 +578,33 @@ function App() {
       condition: "UNKNOWN",
     };
 
-    setInventoryItems((currentItems) => [...currentItems, newItem]);
+    try {
+      const newItem = await createInventoryMutation.mutateAsync(itemToCreate);
 
-    setTransactions((currentTransactions) => [
-      ...currentTransactions,
-      {
+      await createTransactionMutation.mutateAsync({
         id: crypto.randomUUID(),
         itemId: newItem.id,
         propertyTag: newItem.propertyTag,
         type: "Received",
         date: new Date().toISOString(),
         details: `Received ${newItem.name} at ${newItem.location}`,
-      },
-    ]);
+      });
 
-    setReceiveForm({
-      propertyTag: "",
-      serialNumber: "",
-      name: "",
-      location: "",
-    });
-
-    setSelectedItemId(null);
-    setFormError("");
+      resetReceive();
+      setSelectedItemId(null);
+    } catch {
+      setFormError(
+        "Could not save the item. Check that JSON Server is running.",
+      );
+    }
   };
 
-  const handleIssueItem = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleIssueItem = async (data: z.infer<typeof issueSchema>) => {
     setIssueError("");
 
-    const propertyTag = issueForm.propertyTag;
-    const custodian = issueForm.custodian.trim();
-    const location = issueForm.location.trim();
+    const { propertyTag, custodian, location } = data;
 
-    if (!propertyTag || !custodian || !location) {
-      setIssueError("Please complete all issuance fields.");
-      return;
-    }
-
-    const itemToIssue = inventoryItems.find(
+    const itemToIssue = apiInventoryItems.find(
       (item) => item.propertyTag === propertyTag,
     );
 
@@ -215,54 +618,40 @@ function App() {
       return;
     }
 
-    const updatedItem: InventoryItem = {
-      ...itemToIssue,
-      status: "ISSUED",
-      custodian,
-      location,
-    };
+    try {
+      const updatedItem = await updateInventoryMutation.mutateAsync({
+        id: itemToIssue.id,
+        updates: {
+          status: "ISSUED",
+          custodian,
+          location,
+        },
+      });
 
-    setInventoryItems((currentItems) =>
-      currentItems.map((item) =>
-        item.id === updatedItem.id ? updatedItem : item,
-      ),
-    );
-
-    setTransactions((currentTransactions) => [
-      ...currentTransactions,
-      {
+      await createTransactionMutation.mutateAsync({
         id: crypto.randomUUID(),
         itemId: updatedItem.id,
         propertyTag: updatedItem.propertyTag,
         type: "Issued",
         date: new Date().toISOString(),
         details: `Issued to ${custodian} at ${location}`,
-      },
-    ]);
+      });
 
-    setSelectedItemId(updatedItem.id);
-
-    setIssueForm({
-      propertyTag: "",
-      custodian: "",
-      location: "",
-    });
+      setSelectedItemId(updatedItem.id);
+      resetIssue();
+    } catch {
+      setIssueError(
+        "Could not issue the item. Check that JSON Server is running.",
+      );
+    }
   };
 
-  const handleBorrowItem = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleBorrowItem = async (data: z.infer<typeof borrowSchema>) => {
     setBorrowError("");
 
-    const propertyTag = borrowForm.propertyTag;
-    const borrower = borrowForm.borrower.trim();
-    const location = borrowForm.location.trim();
+    const { propertyTag, borrower, location } = data;
 
-    if (!propertyTag || !borrower || !location) {
-      setBorrowError("Please complete all borrowing fields.");
-      return;
-    }
-
-    const itemToBorrow = inventoryItems.find(
+    const itemToBorrow = apiInventoryItems.find(
       (item) => item.propertyTag === propertyTag,
     );
 
@@ -270,56 +659,48 @@ function App() {
       setBorrowError("Please select a valid inventory item.");
       return;
     }
+
     if (itemToBorrow.status !== "IN_STOCK") {
       setBorrowError("Only available items can be borrowed.");
       return;
     }
-    const updatedItem: InventoryItem = {
-      ...itemToBorrow,
-      status: "ON_LOAN",
-      custodian: borrower,
-      location,
-    };
-    setInventoryItems((currentItems) =>
-      currentItems.map((item) =>
-        item.id === updatedItem.id ? updatedItem : item,
-      ),
-    );
 
-    setTransactions((currentTransactions) => [
-      ...currentTransactions,
-      {
+    try {
+      const updatedItem = await updateInventoryMutation.mutateAsync({
+        id: itemToBorrow.id,
+        updates: {
+          status: "ON_LOAN",
+          custodian: borrower,
+          location,
+        },
+      });
+
+      await createTransactionMutation.mutateAsync({
         id: crypto.randomUUID(),
         itemId: updatedItem.id,
         propertyTag: updatedItem.propertyTag,
         type: "Borrowed",
         date: new Date().toISOString(),
         details: `Borrowed by ${borrower} at ${location}`,
-      },
-    ]);
+      });
 
-    setBorrowForm({
-      propertyTag: "",
-      borrower: "",
-      location: "",
-    });
+      resetBorrow();
+    } catch {
+      setBorrowError(
+        "Could not borrow the item. Check that JSON Server is running.",
+      );
+    }
   };
 
-  const handlePullOutForRepair = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handlePullOutForRepair = async (
+    data: z.infer<typeof pullOutSchema>,
+  ) => {
     setPullOutError("");
 
-    const propertyTag = pullOutForm.propertyTag;
-    const repairLocation = pullOutForm.repairLocation.trim();
-    const reason = pullOutForm.reason.trim();
+    const { propertyTag, repairLocation, reason } = data;
 
-    if (!propertyTag || !repairLocation || !reason) {
-      setPullOutError("Please complete all repair fields.");
-      return;
-    }
-
-    const itemToPullOut = inventoryItems.find(
-      (item) => item.propertyTag === pullOutForm.propertyTag,
+    const itemToPullOut = apiInventoryItems.find(
+      (item) => item.propertyTag === propertyTag,
     );
 
     if (!itemToPullOut) {
@@ -328,107 +709,93 @@ function App() {
     }
 
     const canBePulledOut =
-      itemToPullOut.status === "ISSUED" || itemToPullOut.status === "ON_LOAN" || itemToPullOut.status === "IN_STOCK";
+      itemToPullOut.status === "ISSUED" ||
+      itemToPullOut.status === "ON_LOAN" ||
+      itemToPullOut.status === "IN_STOCK";
 
     if (!canBePulledOut) {
       setPullOutError("This item cannot be pulled out for repair right now.");
       return;
     }
 
-    const updatedItem: InventoryItem = {
-      ...itemToPullOut,
-      status: "UNDER_REPAIR",
-      location: repairLocation,
-    };
-    delete updatedItem.custodian;
+    try {
+      const updatedItem = await updateInventoryMutation.mutateAsync({
+        id: itemToPullOut.id,
+        updates: {
+          status: "UNDER_REPAIR",
+          location: repairLocation,
+          custodian: null,
+        },
+      });
 
-    setInventoryItems((currentItems) =>
-      currentItems.map((item) =>
-        item.id === updatedItem.id ? updatedItem : item,
-      ),
-    );
-
-    setTransactions((currentTransactions) => [
-      ...currentTransactions,
-      {
+      await createTransactionMutation.mutateAsync({
         id: crypto.randomUUID(),
         itemId: updatedItem.id,
         propertyTag: updatedItem.propertyTag,
         type: "Pulled Out for Repair",
         date: new Date().toISOString(),
         details: `Pulled out from ${itemToPullOut.location} to ${repairLocation}. Reason: ${reason}`,
-      },
-    ]);
+      });
 
-    setSelectedItemId(updatedItem.id);
-
-    setPullOutForm({
-      propertyTag: "",
-      repairLocation: "",
-      reason: "",
-    });
+      setSelectedItemId(updatedItem.id);
+      resetPullOut();
+    } catch {
+      setPullOutError(
+        "Could not pull out the item. Check that JSON Server is running.",
+      );
+    }
   };
 
-  // Return an issued or loaned item to the MIS Office and record the return.
-  const handleReturnItem = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleReturnItem = async (data: z.infer<typeof returnSchema>) => {
+    setReturnError("");
 
-    const itemToReturn = inventoryItems.find(
-      (item) => item.propertyTag === returnForm.propertyTag,
+    const itemToReturn = apiInventoryItems.find(
+      (item) => item.propertyTag === data.propertyTag,
     );
 
-    // Stop if the selection is missing or the item is no longer out.
     if (!itemToReturn) {
+      setReturnError("Please select a valid inventory item.");
       return;
     }
+
     if (itemToReturn.status !== "ISSUED" && itemToReturn.status !== "ON_LOAN") {
+      setReturnError("Only issued or loaned items can be returned.");
       return;
     }
-    // Create the item's new state after it has been returned.
-    const updatedItem: InventoryItem = {
-      ...itemToReturn,
-      status: "IN_STOCK",
-      location: "MIS Office",
-    };
-    delete updatedItem.custodian;
 
-    // Replace this item in the list while keeping every other item unchanged.
-    setInventoryItems((currentItems) =>
-      currentItems.map((item) =>
-        item.id === updatedItem.id ? updatedItem : item,
-      ),
-    );
+    try {
+      const updatedItem = await updateInventoryMutation.mutateAsync({
+        id: itemToReturn.id,
+        updates: {
+          status: "IN_STOCK",
+          location: "MIS Office",
+          custodian: null,
+        },
+      });
 
-    // Keep the return event in transaction history as a separate record.
-    setTransactions((currentTransactions) => [
-      ...currentTransactions,
-      {
+      await createTransactionMutation.mutateAsync({
         id: crypto.randomUUID(),
         itemId: updatedItem.id,
         propertyTag: updatedItem.propertyTag,
         type: "Returned",
         date: new Date().toISOString(),
         details: `Returned to ${updatedItem.location}`,
-      },
-    ]);
-    // Clear the controlled select after a successful return.
-    setReturnForm({
-      propertyTag: "",
-    });
+      });
+
+      resetReturn();
+    } catch {
+      setReturnError(
+        "Could not return the item. Check that JSON Server is running.",
+      );
+    }
   };
 
-  const handleRepairItem = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleRepairItem = async (data: z.infer<typeof repairSchema>) => {
     setRepairError("");
 
-    const propertyTag = repairForm.propertyTag;
+    const { propertyTag } = data;
 
-    if (!propertyTag) {
-      setRepairError("Please select an item to complete repair.");
-      return;
-    }
-
-    const itemToRepair = inventoryItems.find(
+    const itemToRepair = apiInventoryItems.find(
       (item) => item.propertyTag === propertyTag,
     );
 
@@ -442,39 +809,35 @@ function App() {
       return;
     }
 
-    const updatedItem: InventoryItem = {
-      ...itemToRepair,
-      status: "IN_STOCK",
-      location: "MIS Office",
-    };
-    delete updatedItem.custodian;
+    try {
+      const updatedItem = await updateInventoryMutation.mutateAsync({
+        id: itemToRepair.id,
+        updates: {
+          status: "IN_STOCK",
+          location: "MIS Office",
+          custodian: null,
+        },
+      });
 
-    setInventoryItems((currentItems) =>
-      currentItems.map((item) =>
-        item.id === updatedItem.id ? updatedItem : item,
-      ),
-    );
-
-    setTransactions((currentTransactions) => [
-      ...currentTransactions,
-      {
+      await createTransactionMutation.mutateAsync({
         id: crypto.randomUUID(),
         itemId: updatedItem.id,
         propertyTag: updatedItem.propertyTag,
         type: "Repair Completed",
         date: new Date().toISOString(),
         details: `Repair completed. Returned to ${updatedItem.location}`,
-      },
-    ]);
+      });
 
-    setSelectedItemId(updatedItem.id);
-
-    setRepairForm({
-      propertyTag: "",
-    });
+      setSelectedItemId(updatedItem.id);
+      resetRepair();
+    } catch {
+      setRepairError(
+        "Could not complete the repair. Check that JSON Server is running.",
+      );
+    }
   };
 
-  const filteredItems = inventoryItems.filter((item) => {
+  const filteredItems = apiInventoryItems.filter((item) => {
     const search = searchText.toLowerCase();
 
     const matchesSearch =
@@ -486,22 +849,39 @@ function App() {
 
     return matchesSearch && matchesStatus;
   });
-  const totalItems = inventoryItems.length;
+
+  const totalItems = apiInventoryItems.length;
   const visibleItems = filteredItems.length;
-  const inStockCount = inventoryItems.filter(
+
+  const inStockCount = apiInventoryItems.filter(
     (item) => item.status === "IN_STOCK",
   ).length;
-  const issuedCount = inventoryItems.filter(
+
+  const issuedCount = apiInventoryItems.filter(
     (item) => item.status === "ISSUED",
   ).length;
-  const onLoanCount = inventoryItems.filter(
+
+  const onLoanCount = apiInventoryItems.filter(
     (item) => item.status === "ON_LOAN",
   ).length;
-  const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
-  const selectedItem =
-    inventoryItems.find((item) => item.id === selectedItemId) ?? null;
 
-  const [activeSection, setActiveSection] = useState("inventory");
+  const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
+
+  const selectedItem =
+    apiInventoryItems.find((item) => item.id === selectedItemId) ?? null;
+  const location = useLocation();
+
+  const sectionByPath: Record<string, AppSection> = {
+    "/": "dashboard",
+    "/inventory": "inventory",
+    "/transactions": "transactions",
+    "/actions": "actions",
+  };
+
+  const activeSection = sectionByPath[location.pathname] ?? "dashboard";
+
+  const [activeAction, setActiveAction] =
+    useState<ManageAssetAction>("receive");
 
   return (
     <>
@@ -511,30 +891,90 @@ function App() {
             <strong>ACE Medical Center Bohol</strong>
             <span>MIS Inventory</span>
           </div>
+
           <nav aria-label="Main Navigation">
-            <a
-              href="#inventory"
-              className={activeSection === "inventory" ? "active" : ""}
-              onClick={() => setActiveSection("inventory")}
+            <NavLink
+              to="/"
+              end
+              className={({ isActive }) => (isActive ? "active" : "")}
+            >
+              Dashboard
+            </NavLink>
+            <NavLink
+              to="/inventory"
+              end
+              className={({ isActive }) => (isActive ? "active" : "")}
             >
               Inventory
-            </a>
-            <a
-              href="#transactions"
-              className={activeSection === "transactions" ? "active" : ""}
-              onClick={() => setActiveSection("transactions")}
+            </NavLink>
+            <NavLink
+              to="/transactions"
+              end
+              className={({ isActive }) => (isActive ? "active" : "")}
             >
-              Transactions
-            </a>
+              Transaction
+            </NavLink>
 
-            <a
-              href="#actions"
-              className={activeSection === "actions" ? "active" : ""}
-              onClick={() => setActiveSection("actions")}
+            <NavLink
+              to="/actions"
+              end
+              className={({ isActive }) => (isActive ? "active" : "")}
             >
               Manage Assets
-            </a>
+            </NavLink>
           </nav>
+
+          {activeSection === "actions" && (
+            <nav aria-label="Manage asset actions">
+              <button
+                type="button"
+                className={activeAction === "receive" ? "active" : ""}
+                onClick={() => setActiveAction("receive")}
+              >
+                Receive Item
+              </button>
+
+              <button
+                type="button"
+                className={activeAction === "issue" ? "active" : ""}
+                onClick={() => setActiveAction("issue")}
+              >
+                Issue Item
+              </button>
+
+              <button
+                type="button"
+                className={activeAction === "borrow" ? "active" : ""}
+                onClick={() => setActiveAction("borrow")}
+              >
+                Borrow Item
+              </button>
+
+              <button
+                type="button"
+                className={activeAction === "return" ? "active" : ""}
+                onClick={() => setActiveAction("return")}
+              >
+                Return Item
+              </button>
+
+              <button
+                type="button"
+                className={activeAction === "pullOut" ? "active" : ""}
+                onClick={() => setActiveAction("pullOut")}
+              >
+                Pull out for Repair
+              </button>
+
+              <button
+                type="button"
+                className={activeAction === "repair" ? "active" : ""}
+                onClick={() => setActiveAction("repair")}
+              >
+                Complete Repair
+              </button>
+            </nav>
+          )}
         </aside>
         <div className="page-main">
           <header className="dashboard-header">
@@ -545,518 +985,593 @@ function App() {
             </div>
           </header>
           <div className="dashboard-content">
-            <main className="inventory-app" id="overview">
-              <div className="dashboard-title-row">
-                <div>
-                  <p className="eyebrow">ASSET MANAGEMENT</p>
-                  <h1>Inventory Dashboard</h1>
-                  <p className="dashboard-subtitle">
-                    Monitor hospital equipment, assignments, and movement.
-                  </p>
-                </div>
-                <span className="record-count">{totalItems} total assets</span>
-              </div>
+            {activeSection !== "actions" && (
+              <main className="inventory-app" id="overview">
+                {activeSection === "dashboard" && (
+                  <>
+                    <div className="dashboard-title-row">
+                      <div>
+                        <p className="eyebrow">ASSET MANAGEMENT</p>
+                        <h1>Inventory Dashboard</h1>
+                        <p className="dashboard-subtitle">
+                          Monitor hospital equipment, assignments, and movement.
+                        </p>
+                      </div>
+                      <span className="record-count">
+                        {totalItems} total assets
+                      </span>
+                    </div>
 
-              <section className="summary-grid" aria-label="Inventory summary">
-                <article className="summary-card summary-total">
-                  <span>Total assets</span>
-                  <strong>{totalItems}</strong>
-                  <small>All recorded equipment</small>
-                </article>
-                <article className="summary-card summary-stock">
-                  <span>Available</span>
-                  <strong>{inStockCount}</strong>
-                  <small>Ready to assign or loan</small>
-                </article>
-                <article className="summary-card summary-issued">
-                  <span>Issued</span>
-                  <strong>{issuedCount}</strong>
-                  <small>Assigned to departments</small>
-                </article>
-                <article className="summary-card summary-loan">
-                  <span>On loan</span>
-                  <strong>{onLoanCount}</strong>
-                  <small>Temporarily borrowed</small>
-                </article>
-              </section>
-
-              <section className="dashboard-panel" id="inventory">
-                <div className="panel-heading">
-                  <div>
-                    <h2>Inventory Records</h2>
-                    <p>
-                      Showing {visibleItems} of {totalItems} assets
-                    </p>
-                  </div>
-                </div>
-
-                <div className="inventory-toolbar">
-                  <input
-                    type="text"
-                    aria-label="Search inventory"
-                    placeholder="Search property tag or item name..."
-                    value={searchText}
-                    onChange={(event) => setSearchText(event.target.value)}
-                  />
-
-                  <div className="status-filter">
-                    <label htmlFor="status-filter">Filter by status:</label>
-                    <select
-                      id="status-filter"
-                      value={statusFilter}
-                      onChange={(event) =>
-                        setStatusFilter(
-                          event.target.value as "All" | AssetStatus,
-                        )
-                      }
+                    <section
+                      className="summary-grid"
+                      aria-label="Inventory summary"
                     >
-                      <option value="All">All Statuses</option>
-                      <option value="IN_STOCK">Available</option>
-                      <option value="ISSUED">Issued</option>
-                      <option value="ON_LOAN">On Loan</option>
-                      <option value="UNDER_REPAIR">Under Repair</option>
-                      <option value="FOR_DISPOSAL">For Disposal</option>
-                      <option value="DISPOSED">Disposed</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="table-scroll">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Property Tag</th>
-                        <th>Item Name</th>
-                        <th>Serial Number</th>
-                        <th>Location</th>
-                        <th>Status</th>
-                        <th>Custodian</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredItems.length > 0 ? (
-                        filteredItems.map((item) => (
-                          <tr
-                            key={item.id}
-                            onClick={() => setSelectedItemId(item.id)}
-                            className="inventory-row"
-                          >
-                            <td>{item.propertyTag}</td>
-                            <td>{item.name}</td>
-                            <td>{item.serialNumber}</td>
-                            <td>{item.location}</td>
-                            <td>
-                              <span
-                                className={`status-badge status-${item.status.toLowerCase()}`}
-                              >
-                                {statusLabels[item.status]}
-                              </span>
-                            </td>
-                            <td>{item.custodian ?? "Not assigned"}</td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan={6}>No matching items found.</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-              <section
-                className="dashboard-panel transaction-history"
-                id="transactions"
-              >
-                <h2>Transaction History</h2>
-
-                {transactions.length === 0 ? (
-                  <p>No transactions recorded yet.</p>
-                ) : (
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Date</th>
-                        <th>Property Tag</th>
-                        <th>Transaction</th>
-                        <th>Details</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[...transactions].reverse().map((transaction) => (
-                        <tr key={transaction.id}>
-                          <td>{transaction.date}</td>
-                          <td>{transaction.propertyTag}</td>
-                          <td>{transaction.type}</td>
-                          <td>{transaction.details}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      <article className="summary-card summary-total">
+                        <span>Total assets</span>
+                        <strong>{totalItems}</strong>
+                        <small>All recorded equipment</small>
+                      </article>
+                      <article className="summary-card summary-stock">
+                        <span>Available</span>
+                        <strong>{inStockCount}</strong>
+                        <small>Ready to assign or loan</small>
+                      </article>
+                      <article className="summary-card summary-issued">
+                        <span>Issued</span>
+                        <strong>{issuedCount}</strong>
+                        <small>Assigned to departments</small>
+                      </article>
+                      <article className="summary-card summary-loan">
+                        <span>On loan</span>
+                        <strong>{onLoanCount}</strong>
+                        <small>Temporarily borrowed</small>
+                      </article>
+                    </section>
+                  </>
                 )}
+                {activeSection === "inventory" && (
+                  <section className="dashboard-panel" id="inventory">
+                    <div className="panel-heading">
+                      <div>
+                        <h2>Inventory Records</h2>
+                        <p>
+                          Showing {visibleItems} of {totalItems} assets
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="inventory-toolbar">
+                      <InventorySearch
+                        searchText={searchText}
+                        onSearchChange={setSearchText}
+                      />
+
+                      <InventoryStatusFilter
+                        statusFilter={statusFilter}
+                        onStatusFilterChange={setStatusFilter}
+                      />
+                    </div>
+
+                    {inventoryApiQuery.isLoading && <p>Loading inventory...</p>}
+                    {inventoryApiQuery.isError && (
+                      <p role="alert">
+                        Could not load inventory. Check if JSON Server is
+                        running.
+                      </p>
+                    )}
+
+                    <div className="table-scroll">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Property Tag</th>
+                            <th>Item Name</th>
+                            <th>Serial Number</th>
+                            <th>Location</th>
+                            <th>Status</th>
+                            <th>Custodian</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredItems.length > 0 ? (
+                            filteredItems.map((item) => (
+                              <tr
+                                key={item.id}
+                                onClick={() => setSelectedItemId(item.id)}
+                                className="inventory-row"
+                              >
+                                <td>{item.propertyTag}</td>
+                                <td>{item.name}</td>
+                                <td>{item.serialNumber}</td>
+                                <td>{item.location}</td>
+                                <td>
+                                  <span
+                                    className={`status-badge status-${item.status.toLowerCase()}`}
+                                  >
+                                    {statusLabels[item.status]}
+                                  </span>
+                                </td>
+                                <td>{item.custodian ?? "Not assigned"}</td>
+                              </tr>
+                            ))
+                          ) : !inventoryApiQuery.isLoading &&
+                            !inventoryApiQuery.isError ? (
+                            <tr>
+                              <td colSpan={6}>No matching items found.</td>
+                            </tr>
+                          ) : null}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                )}
+                {activeSection === "transactions" && (
+                  <section
+                    className="dashboard-panel transaction-history"
+                    id="transactions"
+                  >
+                    <h2>Transaction History</h2>
+                    {transactionsApiQuery.isLoading && (
+                      <p>Loading transactions...</p>
+                    )}
+                    {transactionsApiQuery.isError && (
+                      <p role="alert">
+                        Could not load transaction history. Check if JSON Server
+                        is running.
+                        <button
+                          type="button"
+                          onClick={() => transactionsApiQuery.refetch()}
+                          disabled={transactionsApiQuery.isFetching}
+                        >
+                          {transactionsApiQuery.isFetching
+                            ? "Retrying..."
+                            : "Retry"}
+                        </button>
+                      </p>
+                    )}
+
+                    {transactionsApiQuery.isFetching &&
+                      transactionsApiQuery.isSuccess && (
+                        <p>Refreshing transactions...</p>
+                      )}
+
+                    {!transactionsApiQuery.isLoading &&
+                    transactionsApiQuery.isSuccess &&
+                    apiTransactions.length === 0 ? (
+                      <p>No transactions recorded yet.</p>
+                    ) : (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Date</th>
+                            <th>Property Tag</th>
+                            <th>Transaction</th>
+                            <th>Details</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[...apiTransactions].reverse().map((transaction) => (
+                            <tr key={transaction.id}>
+                              <td>
+                                {new Date(transaction.date).toLocaleString(
+                                  "en-PH",
+                                  {
+                                    timeZone: "Asia/Manila",
+                                    dateStyle: "medium",
+                                    timeStyle: "short",
+                                  },
+                                )}
+                              </td>
+                              <td>{transaction.propertyTag}</td>
+                              <td>{transaction.type}</td>
+                              <td>{transaction.details}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </section>
+                )}
+
+                {activeSection === "inventory" && selectedItem && (
+                  <>
+                    <ItemDetails
+                      item={selectedItem}
+                      onClose={() => setSelectedItemId(null)}
+                      onSave={handleEditItem}
+                    />
+
+                    {editError && <p role="alert">{editError}</p>}
+                  </>
+                )}
+              </main>
+            )}
+
+            {activeSection === "actions" && (
+              <section className="action-area" id="actions">
+                <div className="section-heading">
+                  <p className="eyebrow">INVENTORY OPERATIONS</p>
+                  <h2>Manage Assets</h2>
+                  <p>
+                    Receive equipment, issue it to staff, or record a loan or
+                    return.
+                  </p>
+                </div>
+
+                <div className="forms-grid">
+                  {activeAction === "receive" && (
+                    <section className="receive-form">
+                      <h2>Receive New Item</h2>
+
+                      <form onSubmit={handleReceiveSubmit(handleReceiveItem)}>
+                        <label htmlFor="receive-tag">Property Tag</label>
+                        <input
+                          id="receive-tag"
+                          {...registerReceive("propertyTag")}
+                          placeholder="e.g. DEMO-IT-005"
+                        />
+                        {receiveErrors.propertyTag && (
+                          <p role="alert">
+                            {receiveErrors.propertyTag.message}
+                          </p>
+                        )}
+
+                        <label htmlFor="receive-serial">Serial Number</label>
+                        <input
+                          id="receive-serial"
+                          {...registerReceive("serialNumber")}
+                          placeholder="Enter serial number"
+                        />
+                        {receiveErrors.serialNumber && (
+                          <p role="alert">
+                            {receiveErrors.serialNumber.message}
+                          </p>
+                        )}
+                        <label htmlFor="receive-name">Item Name</label>
+                        <input
+                          id="receive-name"
+                          {...registerReceive("name")}
+                          placeholder="e.g. USB Keyboard"
+                        />
+                        {receiveErrors.name && (
+                          <p role="alert">{receiveErrors.name.message}</p>
+                        )}
+                        <label htmlFor="receive-location">
+                          Initial Location
+                        </label>
+                        <input
+                          id="receive-location"
+                          {...registerReceive("location")}
+                          placeholder="e.g. MIS Office"
+                        />
+                        {receiveErrors.location && (
+                          <p role="alert">{receiveErrors.location.message}</p>
+                        )}
+
+                        {formError && <p role="alert">{formError}</p>}
+                        <button type="submit">Receive Item</button>
+                      </form>
+                    </section>
+                  )}
+
+                  {activeAction === "issue" && (
+                    <section className="issue-form">
+                      <h2>Issue / Deploy Item</h2>
+
+                      <form onSubmit={handleIssueSubmit(handleIssueItem)}>
+                        <label htmlFor="issue-item">Available Item</label>
+                        <div className="issue-item-picker">
+                          <input
+                            id="issue-item"
+                            autoComplete="off"
+                            {...registerIssue("propertyTag", {
+                              onChange: () => setShowIssueSuggestions(true),
+                            })}
+                            placeholder="Type a property tag or item name..."
+                            onFocus={() => setShowIssueSuggestions(true)}
+                            aria-expanded={showIssueSuggestions}
+                            aria-controls="issue-item-suggestions"
+                          />
+
+                          {showIssueSuggestions &&
+                            issueSearchText.length > 0 && (
+                              <ul
+                                id="issue-item-suggestions"
+                                className="issue-item-suggestions"
+                                role="listbox"
+                              >
+                                {issueSuggestions.length > 0 ? (
+                                  issueSuggestions.map((item) => (
+                                    <li
+                                      key={item.id}
+                                      role="option"
+                                      aria-selected="false"
+                                    >
+                                      <button
+                                        type="button"
+                                        onMouseDown={(event) =>
+                                          event.preventDefault()
+                                        }
+                                        onClick={() => {
+                                          setIssueValue(
+                                            "propertyTag",
+                                            item.propertyTag,
+                                            {
+                                              shouldValidate: true,
+                                            },
+                                          );
+                                          setShowIssueSuggestions(false);
+                                        }}
+                                      >
+                                        <strong>{item.propertyTag}</strong>
+                                        <span>{item.name}</span>
+                                      </button>
+                                    </li>
+                                  ))
+                                ) : (
+                                  <li className="issue-no-suggestions">
+                                    No available items found.
+                                  </li>
+                                )}
+                              </ul>
+                            )}
+                        </div>
+
+                        {issueErrors.propertyTag && (
+                          <p role="alert">{issueErrors.propertyTag.message}</p>
+                        )}
+
+                        <label htmlFor="issue-custodian">
+                          Recipient / Custodian
+                        </label>
+                        <input
+                          id="issue-custodian"
+                          {...registerIssue("custodian")}
+                          placeholder="Enter demo recipient"
+                        />
+                        {issueErrors.custodian && (
+                          <p role="alert">{issueErrors.custodian.message}</p>
+                        )}
+
+                        <label htmlFor="issue-location">
+                          Destination / Location
+                        </label>
+                        <input
+                          id="issue-location"
+                          {...registerIssue("location")}
+                          placeholder="e.g. Admin Department"
+                        />
+                        {issueErrors.location && (
+                          <p role="alert">{issueErrors.location.message}</p>
+                        )}
+
+                        {issueError && <p role="alert">{issueError}</p>}
+
+                        <button type="submit">Issue Item</button>
+                      </form>
+                    </section>
+                  )}
+
+                  {activeAction === "borrow" && (
+                    <section className="borrow-item">
+                      <h2>Borrow Item</h2>
+                      <form onSubmit={handleBorrowSubmit(handleBorrowItem)}>
+                        <label htmlFor="borrow-item">Item to borrow</label>
+                        <div className="issue-item-picker">
+                          <input
+                            id="borrow-item"
+                            autoComplete="off"
+                            {...registerBorrow("propertyTag", {
+                              onChange: () => setShowBorrowSuggestions(true),
+                            })}
+                            placeholder="Type a property tag or item name..."
+                            onFocus={() => setShowBorrowSuggestions(true)}
+                          />
+                          {showBorrowSuggestions &&
+                            borrowSearchText.length > 0 && (
+                              <ul
+                                id="borrow-item-suggestions"
+                                className="issue-item-suggestions"
+                                role="listbox"
+                              >
+                                {borrowSuggestions.length > 0 ? (
+                                  borrowSuggestions.map((item) => (
+                                    <li
+                                      key={item.id}
+                                      role="option"
+                                      aria-selected="false"
+                                    >
+                                      <button
+                                        type="button"
+                                        onMouseDown={(event) =>
+                                          event.preventDefault()
+                                        }
+                                        onClick={() => {
+                                          setBorrowValue(
+                                            "propertyTag",
+                                            item.propertyTag,
+                                            {
+                                              shouldValidate: true,
+                                            },
+                                          );
+                                          setShowBorrowSuggestions(false);
+                                        }}
+                                      >
+                                        <strong>{item.propertyTag}</strong>
+                                        <span>{item.name}</span>
+                                      </button>
+                                    </li>
+                                  ))
+                                ) : (
+                                  <li className="issue-no-suggestions">
+                                    No available items found.
+                                  </li>
+                                )}
+                              </ul>
+                            )}
+                        </div>
+                        {borrowErrors.propertyTag && (
+                          <p role="alert">{borrowErrors.propertyTag.message}</p>
+                        )}
+
+                        <label htmlFor="borrow-custodian">
+                          Recipient / Custodian
+                        </label>
+                        <input
+                          id="borrow-custodian"
+                          {...registerBorrow("borrower")}
+                          placeholder="Enter demo recipient"
+                        />
+                        {borrowErrors.borrower && (
+                          <p role="alert">{borrowErrors.borrower.message}</p>
+                        )}
+
+                        <label htmlFor="borrow-location">
+                          Destination / Location
+                        </label>
+                        <input
+                          id="borrow-location"
+                          {...registerBorrow("location")}
+                          placeholder="e.g. Admin Department"
+                        />
+                        {borrowErrors.location && (
+                          <p role="alert">{borrowErrors.location.message}</p>
+                        )}
+
+                        {borrowError && <p role="alert">{borrowError}</p>}
+                        <button type="submit">Borrow Item</button>
+                      </form>
+                    </section>
+                  )}
+
+                  {/* Only issued or loaned items are available in this return form. */}
+                  {activeAction === "return" && (
+                    <section className="return-item">
+                      <h2>Return Item</h2>
+
+                      <form onSubmit={handleReturnSubmit(handleReturnItem)}>
+                        <label htmlFor="return-item">Item to return</label>
+                        <select
+                          id="return-item"
+                          {...registerReturn("propertyTag")}
+                        >
+                          <option value="">Select an issued item</option>
+                          {apiInventoryItems
+                            .filter(
+                              (item) =>
+                                item.status === "ISSUED" ||
+                                item.status === "ON_LOAN",
+                            )
+                            .map((item) => (
+                              <option key={item.id} value={item.propertyTag}>
+                                {item.propertyTag} — {item.name}
+                              </option>
+                            ))}
+                        </select>
+                        {returnErrors.propertyTag && (
+                          <p role="alert">{returnErrors.propertyTag.message}</p>
+                        )}
+
+                        {returnError && <p role="alert">{returnError}</p>}
+
+                        <button type="submit">Return Item</button>
+                      </form>
+                    </section>
+                  )}
+
+                  {activeAction === "pullOut" && (
+                    <section className="pullout-item">
+                      <h2>Pull Out Item</h2>
+                      <form
+                        onSubmit={handlePullOutSubmit(handlePullOutForRepair)}
+                      >
+                        <label htmlFor="pullout-item">Item to pull out</label>
+                        <select
+                          id="pullout-item"
+                          {...registerPullOut("propertyTag")}
+                        >
+                          <option value="">Select an item to pull out</option>
+                          {apiInventoryItems
+                            .filter(
+                              (item) =>
+                                item.status === "ON_LOAN" ||
+                                item.status === "ISSUED" ||
+                                item.status === "IN_STOCK",
+                            )
+                            .map((item) => (
+                              <option key={item.id} value={item.propertyTag}>
+                                {item.propertyTag} — {item.name}
+                              </option>
+                            ))}
+                        </select>
+                        {pullOutErrors.propertyTag && (
+                          <p role="alert">
+                            {pullOutErrors.propertyTag.message}
+                          </p>
+                        )}
+
+                        <label htmlFor="repair-location">Repair Location</label>
+                        <input
+                          id="repair-location"
+                          {...registerPullOut("repairLocation")}
+                          placeholder="Enter repair location"
+                        />
+                        {pullOutErrors.repairLocation && (
+                          <p role="alert">
+                            {pullOutErrors.repairLocation.message}
+                          </p>
+                        )}
+
+                        <label htmlFor="pullout-reason">
+                          Reason for repair
+                        </label>
+                        <input
+                          id="pullout-reason"
+                          {...registerPullOut("reason")}
+                          placeholder="e.g. Printer not powering on"
+                        />
+                        {pullOutErrors.reason && (
+                          <p role="alert">{pullOutErrors.reason.message}</p>
+                        )}
+
+                        {pullOutError && <p role="alert">{pullOutError}</p>}
+                        <button type="submit">Pull out Item</button>
+                      </form>
+                    </section>
+                  )}
+
+                  {activeAction === "repair" && (
+                    <section className="repair-item">
+                      <h2>Repair Item</h2>
+                      <form onSubmit={handleRepairSubmit(handleRepairItem)}>
+                        <label htmlFor="repair-item">Item to repair</label>
+                        <select
+                          id="repair-item"
+                          {...registerRepair("propertyTag")}
+                        >
+                          <option value="">
+                            Select an item with completed repair
+                          </option>
+                          {apiInventoryItems
+                            .filter((item) => item.status === "UNDER_REPAIR")
+                            .map((item) => (
+                              <option key={item.id} value={item.propertyTag}>
+                                {item.propertyTag} — {item.name}
+                              </option>
+                            ))}
+                        </select>
+                        {repairErrors.propertyTag && (
+                          <p role="alert">{repairErrors.propertyTag.message}</p>
+                        )}
+
+                        {repairError && <p role="alert">{repairError}</p>}
+                        <button type="submit">Done Repair Item</button>
+                      </form>
+                    </section>
+                  )}
+                </div>
               </section>
-              {selectedItem && (
-                <section className="item-details">
-                  <h2>Item Details</h2>
-
-                  <p>
-                    <strong>Property Tag:</strong> {selectedItem.propertyTag}
-                  </p>
-
-                  <p>
-                    <strong>Item Name:</strong> {selectedItem.name}
-                  </p>
-
-                  <p>
-                    <strong>Serial Number:</strong> {selectedItem.serialNumber}
-                  </p>
-
-                  <p>
-                    <strong>Location:</strong> {selectedItem.location}
-                  </p>
-
-                  <p>
-                    <strong>Status:</strong> {statusLabels[selectedItem.status]}
-                  </p>
-                  <p>
-                    <strong>Custodian:</strong>{" "}
-                    {selectedItem.custodian ?? "Not assigned"}
-                  </p>
-
-                  <button type="button" onClick={() => setSelectedItemId(null)}>
-                    Close Details
-                  </button>
-                </section>
-              )}
-            </main>
-
-            <section className="action-area" id="actions">
-              <div className="section-heading">
-                <p className="eyebrow">INVENTORY OPERATIONS</p>
-                <h2>Manage Assets</h2>
-                <p>
-                  Receive equipment, issue it to staff, or record a loan or
-                  return.
-                </p>
-              </div>
-              <div className="forms-grid">
-                <section className="receive-form">
-                  <h2>Receive New Item</h2>
-
-                  <form onSubmit={handleReceiveItem}>
-                    <label htmlFor="receive-tag">Property Tag</label>
-                    <input
-                      id="receive-tag"
-                      required
-                      value={receiveForm.propertyTag}
-                      onChange={(event) =>
-                        setReceiveForm({
-                          ...receiveForm,
-                          propertyTag: event.target.value,
-                        })
-                      }
-                      placeholder="e.g. DEMO-IT-005"
-                    />
-
-                    <label htmlFor="receive-serial">Serial Number</label>
-                    <input
-                      id="receive-serial"
-                      required
-                      value={receiveForm.serialNumber}
-                      onChange={(event) =>
-                        setReceiveForm({
-                          ...receiveForm,
-                          serialNumber: event.target.value,
-                        })
-                      }
-                      placeholder="Enter serial number"
-                    />
-
-                    <label htmlFor="receive-name">Item Name</label>
-                    <input
-                      id="receive-name"
-                      required
-                      value={receiveForm.name}
-                      onChange={(event) =>
-                        setReceiveForm({
-                          ...receiveForm,
-                          name: event.target.value,
-                        })
-                      }
-                      placeholder="e.g. USB Keyboard"
-                    />
-
-                    <label htmlFor="receive-location">Initial Location</label>
-                    <input
-                      id="receive-location"
-                      required
-                      value={receiveForm.location}
-                      onChange={(event) =>
-                        setReceiveForm({
-                          ...receiveForm,
-                          location: event.target.value,
-                        })
-                      }
-                      placeholder="e.g. MIS Office"
-                    />
-
-                    {formError && <p role="alert">{formError}</p>}
-
-                    <button type="submit">Receive Item</button>
-                  </form>
-                </section>
-
-                <section className="issue-form">
-                  <h2>Issue / Deploy Item</h2>
-
-                  <form onSubmit={handleIssueItem}>
-                    <label htmlFor="issue-item">Available Item</label>
-                    <select
-                      id="issue-item"
-                      required
-                      value={issueForm.propertyTag}
-                      onChange={(event) =>
-                        setIssueForm({
-                          ...issueForm,
-                          propertyTag: event.target.value,
-                        })
-                      }
-                    >
-                      <option value="">Select an available item</option>
-                      {inventoryItems
-                        .filter((item) => item.status === "IN_STOCK")
-                        .map((item) => (
-                          <option key={item.id} value={item.propertyTag}>
-                            {item.propertyTag} — {item.name}
-                          </option>
-                        ))}
-                    </select>
-
-                    <label htmlFor="issue-custodian">
-                      Recipient / Custodian
-                    </label>
-                    <input
-                      id="issue-custodian"
-                      required
-                      value={issueForm.custodian}
-                      onChange={(event) =>
-                        setIssueForm({
-                          ...issueForm,
-                          custodian: event.target.value,
-                        })
-                      }
-                      placeholder="Enter demo recipient"
-                    />
-
-                    <label htmlFor="issue-location">
-                      Destination / Location
-                    </label>
-                    <input
-                      id="issue-location"
-                      required
-                      value={issueForm.location}
-                      onChange={(event) =>
-                        setIssueForm({
-                          ...issueForm,
-                          location: event.target.value,
-                        })
-                      }
-                      placeholder="e.g. Admin Department"
-                    />
-
-                    {issueError && <p role="alert">{issueError}</p>}
-
-                    <button type="submit">Issue Item</button>
-                  </form>
-                </section>
-
-                <section className="pullout-item">
-                  <h2>Pull Out Item</h2>
-                  <form onSubmit={handlePullOutForRepair}>
-                    <label htmlFor="pullout-item">Item to pull out</label>
-                    <select
-                      id="pullout-item"
-                      required
-                      value={pullOutForm.propertyTag}
-                      onChange={(event) =>
-                        setPullOutForm({
-                          ...pullOutForm,
-                          propertyTag: event.target.value,
-                        })
-                      }
-                    >
-                      <option value="">Select an item to pull out</option>
-                      {inventoryItems
-                        .filter(
-                          (item) =>
-                            item.status === "ON_LOAN" ||
-                            item.status === "ISSUED"  ||
-                            item.status === "IN_STOCK",
-                        )
-                        .map((item) => (
-                          <option key={item.id} value={item.propertyTag}>
-                            {item.propertyTag} — {item.name}
-                          </option>
-                        ))}
-                    </select>
-                    <label htmlFor="repair-location">Repair Location</label>
-                    <input
-                      id="repair-location"
-                      required
-                      value={pullOutForm.repairLocation}
-                      onChange={(event) =>
-                        setPullOutForm({
-                          ...pullOutForm,
-                          repairLocation: event.target.value,
-                        })
-                      }
-                      placeholder="Enter repair location"
-                    />
-                    <label htmlFor="pullout-reason">Reason for repair</label>
-                    <input
-                      id="pullout-reason"
-                      required
-                      value={pullOutForm.reason}
-                      onChange={(event) =>
-                        setPullOutForm({
-                          ...pullOutForm,
-                          reason: event.target.value,
-                        })
-                      }
-                      placeholder="e.g. Printer not powering on"
-                    />
-
-                    {pullOutError && <p role="alert">{pullOutError}</p>}
-                    <button type="submit">Pull out Item</button>
-                  </form>
-                </section>
-
-                <section className="borrow-item">
-                  <h2>Borrow Item</h2>
-                  <form onSubmit={handleBorrowItem}>
-                    <label htmlFor="borrow-item">Item to borrow</label>
-                    <select
-                      id="borrow-item"
-                      required
-                      value={borrowForm.propertyTag}
-                      onChange={(event) =>
-                        setBorrowForm({
-                          ...borrowForm,
-                          propertyTag: event.target.value,
-                        })
-                      }
-                    >
-                      <option value="">Select an item to borrow</option>
-                      {inventoryItems
-                        .filter((item) => item.status === "IN_STOCK")
-                        .map((item) => (
-                          <option key={item.id} value={item.propertyTag}>
-                            {item.propertyTag} — {item.name}
-                          </option>
-                        ))}
-                    </select>
-
-                    <label htmlFor="borrow-custodian">
-                      Recipient / Custodian
-                    </label>
-                    <input
-                      id="borrow-custodian"
-                      required
-                      value={borrowForm.borrower}
-                      onChange={(event) =>
-                        setBorrowForm({
-                          ...borrowForm,
-                          borrower: event.target.value,
-                        })
-                      }
-                      placeholder="Enter demo recipient"
-                    />
-
-                    <label htmlFor="borrow-location">
-                      Destination / Location
-                    </label>
-                    <input
-                      id="borrow-location"
-                      required
-                      value={borrowForm.location}
-                      onChange={(event) =>
-                        setBorrowForm({
-                          ...borrowForm,
-                          location: event.target.value,
-                        })
-                      }
-                      placeholder="e.g. Admin Department"
-                    />
-
-                    {borrowError && <p role="alert">{borrowError}</p>}
-                    <button type="submit">Borrow Item</button>
-                  </form>
-                </section>
-
-                {/* Only issued or loaned items are available in this return form. */}
-                <section className="return-item">
-                  <h2>Return Item</h2>
-
-                  <form onSubmit={handleReturnItem}>
-                    <label htmlFor="return-item">Item to return</label>
-                    <select
-                      id="return-item"
-                      required
-                      value={returnForm.propertyTag}
-                      onChange={(event) =>
-                        setReturnForm({
-                          ...returnForm,
-                          propertyTag: event.target.value,
-                        })
-                      }
-                    >
-                      <option value="">Select an issued item</option>
-                      {inventoryItems
-                        .filter(
-                          (item) =>
-                            item.status === "ISSUED" ||
-                            item.status === "ON_LOAN",
-                        )
-                        .map((item) => (
-                          <option key={item.id} value={item.propertyTag}>
-                            {item.propertyTag} — {item.name}
-                          </option>
-                        ))}
-                    </select>
-
-                    <button type="submit">Return Item</button>
-                  </form>
-                </section>
-
-                <section className="repair-item">
-                  <h2>Repair Item</h2>
-                  <form onSubmit={handleRepairItem}>
-                    <label htmlFor="repair-item">Item to repair</label>
-                    <select
-                      id="repair-item"
-                      required
-                      value={repairForm.propertyTag}
-                      onChange={(event) =>
-                        setRepairForm({
-                          ...repairForm,
-                          propertyTag: event.target.value,
-                        })
-                      }
-                    >
-                      <option value="">Select an item with completed repair</option>
-                      {inventoryItems
-                        .filter((item) => item.status === "UNDER_REPAIR")
-                        .map((item) => (
-                          <option key={item.id} value={item.propertyTag}>
-                            {item.propertyTag} — {item.name}
-                          </option>
-                        ))}
-                    </select>
-                    {repairError && <p role="alert">{repairError}</p>}
-                    <button type="submit">Done Repair Item</button>
-                  </form>
-                </section>
-              </div>
-            </section>
+            )}
           </div>
         </div>
       </section>
