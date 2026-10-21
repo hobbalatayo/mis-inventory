@@ -5,10 +5,10 @@
 }
 
 .sidebar {
-  flex: 0 0 220px;
+  flex: 0 0 240px;
   min-height: 100vh;
-  padding: 24px 16px;
-  background: #0b355b;
+  padding: 24px 14px;
+  background: #087f78;
 }
 
 .sidebar-brand {
@@ -26,13 +26,25 @@
 }
 
 .sidebar-brand span {
-  color: #bfdbfe;
+  color: #d8f3f0;
   font-size: 12px;
 }
 
 .sidebar nav {
   display: grid;
-  gap: 8px;
+  gap: 5px;
+}
+
+.sidebar .sidebar-section-title {
+  margin: 16px 12px 4px;
+  color: #d8f3f0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.sidebar .sidebar-actions-nav {
+  gap: 3px;
+  margin-top: 14px;
 }
 
 .sidebar a,
@@ -50,17 +62,22 @@
 }
 
 .sidebar a:hover,
-.sidebar a:focus-visible,
-.sidebar button:hover,
-.sidebar button:focus-visible {
-  background: #174a79;
+.sidebar button:hover {
+  background: transparent;
+  color: #ff8a3d;
 }
 
 .sidebar a.active,
 .sidebar button.active {
-  background: #f97316;
-  color: #ffffff;
-  font-weight: 600;
+  background: transparent;
+  color: #ff8a3d;
+  font-weight: 700;
+}
+
+.sidebar a:focus-visible,
+.sidebar button:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
 }
 
 .page-main {
