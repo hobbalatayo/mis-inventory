@@ -4,142 +4,36 @@ import "./App.css";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { NavLink, useLocation } from "react-router";
+import { NavLink, useLocation, useNavigate } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type {
+  AssetStatus,
+  InventoryItem,
+  AppSection,
+  ManageAssetAction,
+  InventorySearchProps,
+  InventoryStatusFilterProps,
+} from "./type";
 
-type AssetStatus =
-  | "IN_STOCK"
-  | "ISSUED"
-  | "ON_LOAN"
-  | "UNDER_REPAIR"
-  | "FOR_DISPOSAL"
-  | "DISPOSED";
+import {
+  fetchInventoryItems,
+  createInventoryItem,
+  updateInventoryItem,
+  createInventoryTransaction,
+  fetchInventoryTransactions,
+} from "./api";
 
-type InventoryItem = {
-  id: number;
-  propertyTag: string;
-  serialNumber: string | null;
-  name: string;
-  location: string;
-  status: AssetStatus;
-  condition: AssetCondition;
-  custodian?: string | null;
+import {
+  receiveSchema,
+  issueSchema,
+  borrowSchema,
+  returnSchema,
+  pullOutSchema,
+  repairSchema,
+  editSchema,
+} from "./schema";
 
-  category?: string | null;
-  assetGroup?: string | null;
-  manufacturer?: string | null;
-  model?: string | null;
-  supplier?: string | null;
-  floor?: string | null;
-  area?: string | null;
-  department?: string | null;
-  acquisitionDate?: string | null;
-  acquisitionCost?: number | null;
-  araNo?: string | null;
-  remarks?: string | null;
-  originalTag?: string | null;
-};
-
-async function fetchInventoryItems(): Promise<InventoryItem[]> {
-  const response = await fetch("http://localhost:3000/inventoryItems");
-
-  if (!response.ok) {
-    throw new Error("Failed to fetch inventory items.");
-  }
-
-  return response.json();
-}
-
-async function createInventoryItem(
-  item: Omit<InventoryItem, "id">,
-): Promise<InventoryItem> {
-  const response = await fetch("http://localhost:3000/inventoryItems", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(item),
-  });
-
-  if (!response.ok) {
-    throw new Error("Failed to create inventory item.");
-  }
-
-  return response.json() as Promise<InventoryItem>;
-}
-
-async function updateInventoryItem(
-  id: number,
-  updates: Partial<InventoryItem>,
-): Promise<InventoryItem> {
-  const response = await fetch(`http://localhost:3000/inventoryItems/${id}`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(updates),
-  });
-
-  if (!response.ok) {
-    throw new Error("Failed to update inventory item.");
-  }
-
-  return response.json() as Promise<InventoryItem>;
-}
-
-async function createInventoryTransaction(
-  transaction: InventoryTransaction,
-): Promise<InventoryTransaction> {
-  const response = await fetch("http://localhost:3000/transactions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(transaction),
-  });
-
-  if (!response.ok) {
-    throw new Error("Failed to create inventory transaction.");
-  }
-
-  return response.json() as Promise<InventoryTransaction>;
-}
-
-async function fetchInventoryTransactions(): Promise<InventoryTransaction[]> {
-  const response = await fetch("http://localhost:3000/transactions");
-
-  if (!response.ok) {
-    throw new Error("Failed to fetch inventory transactions.");
-  }
-
-  return response.json();
-}
-
-type InventoryTransaction = {
-  id: string;
-  itemId: number;
-  propertyTag: string;
-  type:
-    | "Received"
-    | "Issued"
-    | "Returned"
-    | "Transferred"
-    | "Borrowed"
-    | "Pulled Out for Repair"
-    | "Repair Completed"
-    | "Edited";
-  date: string;
-  details: string;
-};
-
-type AssetCondition =
-  | "BRAND_NEW"
-  | "SERVICEABLE"
-  | "WITH_ISSUES"
-  | "DEFECTIVE"
-  | "UNKNOWN";
-
-type AppSection = "dashboard" | "inventory" | "transactions" | "actions";
+import type { EditFormData } from "./schema";
 
 const statusLabels: Record<AssetStatus, string> = {
   IN_STOCK: "Available",
@@ -150,71 +44,11 @@ const statusLabels: Record<AssetStatus, string> = {
   DISPOSED: "Disposed",
 };
 
-type ManageAssetAction =
-  | "receive"
-  | "issue"
-  | "borrow"
-  | "return"
-  | "pullOut"
-  | "repair";
-
-type InventorySearchProps = {
-  searchText: string;
-  onSearchChange: (value: string) => void;
-};
-
-type InventoryStatusFilterProps = {
-  statusFilter: "All" | AssetStatus;
-  onStatusFilterChange: (value: "All" | AssetStatus) => void;
-};
-
 type ItemDetailsProps = {
   item: InventoryItem;
   onClose: () => void;
   onSave: (itemId: number, data: EditFormData) => Promise<boolean>;
 };
-
-const receiveSchema = z.object({
-  propertyTag: z.string().trim().min(1, "Property tag is required."),
-  serialNumber: z.string().trim().min(1, "Serial number is required."),
-  name: z.string().trim().min(1, "Item name is required."),
-  location: z.string().trim().min(1, "Location is required."),
-});
-
-const issueSchema = z.object({
-  propertyTag: z.string().trim().min(1, "Property tag is required."),
-  custodian: z.string().trim().min(1, "Custodian is required."),
-  location: z.string().trim().min(1, "Location is required."),
-});
-
-const borrowSchema = z.object({
-  propertyTag: z.string().trim().min(1, "Property tag is required."),
-  borrower: z.string().trim().min(1, "Borrowers name is required."),
-  location: z.string().trim().min(1, "Location is required."),
-});
-
-const returnSchema = z.object({
-  propertyTag: z.string().trim().min(1, "Select an item to return."),
-});
-
-const pullOutSchema = z.object({
-  propertyTag: z.string().trim().min(1, "Select an item to pull out."),
-  repairLocation: z.string().trim().min(1, "Repair location is required."),
-  reason: z.string().trim().min(1, "Repair reason is required."),
-});
-
-const repairSchema = z.object({
-  propertyTag: z.string().trim().min(1, "Select an item to complete repair."),
-});
-
-const editSchema = z.object({
-  propertyTag: z.string().trim().min(1, "Property tag is required."),
-  serialNumber: z.string().trim(),
-  name: z.string().trim().min(1, "Name is required."),
-  location: z.string().trim().min(1, "Location is required."),
-});
-
-type EditFormData = z.infer<typeof editSchema>;
 
 function InventorySearch({ searchText, onSearchChange }: InventorySearchProps) {
   return (
@@ -328,30 +162,30 @@ function ItemDetails({ item, onClose, onSave }: ItemDetailsProps) {
           className="item-edit-form"
           onSubmit={handleEditSubmit(submitEditForm)}
         >
-              <label>
-                Property Tag
-                <input type="text" {...registerEdit("propertyTag")} />
-              </label>
-              {editErrors.propertyTag && (
-                <p role="alert">{editErrors.propertyTag.message}</p>
-              )}
-              <label>
-                Serial Number
-                <input type="text" {...registerEdit("serialNumber")} />
-              </label>
-              <label>
-                Item Name
-                <input type="text" {...registerEdit("name")} />
-              </label>
-              {editErrors.name && <p role="alert">{editErrors.name.message}</p>}
-              <label>
-                Location
-                <input type="text" {...registerEdit("location")} />
-              </label>
-              {editErrors.location && (
-                <p role="alert">{editErrors.location.message}</p>
-              )}
-              <button type="submit">Save Changes</button>
+          <label>
+            Property Tag
+            <input type="text" {...registerEdit("propertyTag")} />
+          </label>
+          {editErrors.propertyTag && (
+            <p role="alert">{editErrors.propertyTag.message}</p>
+          )}
+          <label>
+            Serial Number
+            <input type="text" {...registerEdit("serialNumber")} />
+          </label>
+          <label>
+            Item Name
+            <input type="text" {...registerEdit("name")} />
+          </label>
+          {editErrors.name && <p role="alert">{editErrors.name.message}</p>}
+          <label>
+            Location
+            <input type="text" {...registerEdit("location")} />
+          </label>
+          {editErrors.location && (
+            <p role="alert">{editErrors.location.message}</p>
+          )}
+          <button type="submit">Save Changes</button>
         </form>
       )}
     </section>
@@ -870,6 +704,7 @@ function App() {
   const selectedItem =
     apiInventoryItems.find((item) => item.id === selectedItemId) ?? null;
   const location = useLocation();
+  const navigate = useNavigate();
 
   const sectionByPath: Record<string, AppSection> = {
     "/": "dashboard",
@@ -883,6 +718,11 @@ function App() {
   const [activeAction, setActiveAction] =
     useState<ManageAssetAction>("receive");
 
+  const chooseAssetAction = (action: ManageAssetAction) => {
+    setActiveAction(action);
+    navigate("/actions");
+  };
+
   return (
     <>
       <section id="center">
@@ -893,6 +733,7 @@ function App() {
           </div>
 
           <nav aria-label="Main Navigation">
+            <p className="sidebar-section-title">Inventory Monitoring</p>
             <NavLink
               to="/"
               end
@@ -907,74 +748,90 @@ function App() {
             >
               Inventory
             </NavLink>
+            <p className="sidebar-section-title">Transactions</p>
             <NavLink
               to="/transactions"
               end
               className={({ isActive }) => (isActive ? "active" : "")}
             >
-              Transaction
-            </NavLink>
-
-            <NavLink
-              to="/actions"
-              end
-              className={({ isActive }) => (isActive ? "active" : "")}
-            >
-              Manage Assets
+              Transaction History
             </NavLink>
           </nav>
 
-          {activeSection === "actions" && (
-            <nav aria-label="Manage asset actions">
-              <button
-                type="button"
-                className={activeAction === "receive" ? "active" : ""}
-                onClick={() => setActiveAction("receive")}
-              >
-                Receive Item
-              </button>
+          <nav className="sidebar-actions-nav" aria-label="Inventory actions">
+            <p className="sidebar-section-title">Inventory Actions</p>
+            <button
+              type="button"
+              className={
+                activeSection === "actions" && activeAction === "receive"
+                  ? "active"
+                  : ""
+              }
+              onClick={() => chooseAssetAction("receive")}
+            >
+              Receive Item
+            </button>
 
-              <button
-                type="button"
-                className={activeAction === "issue" ? "active" : ""}
-                onClick={() => setActiveAction("issue")}
-              >
-                Issue Item
-              </button>
+            <button
+              type="button"
+              className={
+                activeSection === "actions" && activeAction === "issue"
+                  ? "active"
+                  : ""
+              }
+              onClick={() => chooseAssetAction("issue")}
+            >
+              Issue Item
+            </button>
 
-              <button
-                type="button"
-                className={activeAction === "borrow" ? "active" : ""}
-                onClick={() => setActiveAction("borrow")}
-              >
-                Borrow Item
-              </button>
+            <button
+              type="button"
+              className={
+                activeSection === "actions" && activeAction === "borrow"
+                  ? "active"
+                  : ""
+              }
+              onClick={() => chooseAssetAction("borrow")}
+            >
+              Borrow Item
+            </button>
 
-              <button
-                type="button"
-                className={activeAction === "return" ? "active" : ""}
-                onClick={() => setActiveAction("return")}
-              >
-                Return Item
-              </button>
+            <button
+              type="button"
+              className={
+                activeSection === "actions" && activeAction === "return"
+                  ? "active"
+                  : ""
+              }
+              onClick={() => chooseAssetAction("return")}
+            >
+              Return Item
+            </button>
 
-              <button
-                type="button"
-                className={activeAction === "pullOut" ? "active" : ""}
-                onClick={() => setActiveAction("pullOut")}
-              >
-                Pull out for Repair
-              </button>
+            <button
+              type="button"
+              className={
+                activeSection === "actions" && activeAction === "pullOut"
+                  ? "active"
+                  : ""
+              }
+              onClick={() => chooseAssetAction("pullOut")}
+            >
+              Pull out for Repair
+            </button>
 
-              <button
-                type="button"
-                className={activeAction === "repair" ? "active" : ""}
-                onClick={() => setActiveAction("repair")}
-              >
-                Complete Repair
-              </button>
-            </nav>
-          )}
+            <button
+              type="button"
+              className={
+                activeSection === "actions" && activeAction === "repair"
+                  ? "active"
+                  : ""
+              }
+              onClick={() => chooseAssetAction("repair")}
+            >
+              Complete Repair
+            </button>
+          </nav>
         </aside>
         <div className="page-main">
           <header className="dashboard-header">
