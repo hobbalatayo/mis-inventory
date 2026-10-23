@@ -8,7 +8,7 @@
   flex: 0 0 240px;
   min-height: 100vh;
   padding: 24px 14px;
-  background: #087f78;
+  background: var(--color-teal);
 }
 
 .sidebar-brand {
@@ -63,14 +63,14 @@
 
 .sidebar a:hover,
 .sidebar button:hover {
-  background: transparent;
-  color: #ff8a3d;
+  background: rgba(0, 0, 0, 0.12);
+  color: #ffffff;
 }
 
 .sidebar a.active,
 .sidebar button.active {
-  background: transparent;
-  color: #ff8a3d;
+  background: rgba(0, 0, 0, 0.2);
+  color: #ffffff;
   font-weight: 700;
 }
 
@@ -104,7 +104,7 @@
 
 .dashboard-header h1 {
   margin: 0 0 4px;
-  color: #123b63;
+  color: var(--color-primary);
   font-size: clamp(20px, 3vw, 28px);
 }
 
@@ -395,7 +395,7 @@
 
 .item-details h2 {
   margin: 0 0 12px;
-  color: #123b63;
+  color: var(--color-primary);
 }
 
 .item-details p {
@@ -440,7 +440,7 @@
 
 .item-edit-form [role="alert"] {
   margin: 0;
-  color: #b91c1c;
+  color: var(--color-danger);
 }
 
 .item-edit-form button[type="submit"] {
@@ -461,7 +461,7 @@
   padding: 10px 16px;
   border: 0;
   border-radius: 6px;
-  background: #123b63;
+  background: var(--color-primary);
   color: #ffffff;
 }
 
@@ -533,7 +533,7 @@
 
 .forms-grid > section h2 {
   margin: 0 0 16px;
-  color: #123b63;
+  color: var(--color-primary);
   font-size: 18px;
 }
 
@@ -628,22 +628,13 @@
   transform: none;
 }
 
-.forms-grid .borrow-item .issue-item-suggestions li button {
-  background: #ffffff;
-  color: #1f2937;
-}
-
-.forms-grid .borrow-item .issue-item-suggestions li button:hover {
-  background: #eff6ff;
-}
-
 .issue-item-suggestions li button:hover {
   background: #eff6ff;
   transform: none;
 }
 
 .issue-item-suggestions li button strong {
-  color: #123b63;
+  color: var(--color-primary);
 }
 
 .issue-item-suggestions li button span,
@@ -668,13 +659,13 @@
   border-color: #16835d;
 }
 
-.forms-grid button {
+.forms-grid button[type="submit"] {
   min-height: 43px;
   margin-top: 8px;
   padding: 10px 16px;
   border: 0;
   border-radius: 8px;
-  background: #123b63;
+  background: var(--color-primary);
   color: #ffffff;
   font-weight: 600;
   transition:
@@ -682,37 +673,37 @@
     transform 0.2s ease;
 }
 
-.forms-grid .receive-form button:hover,
-.forms-grid .issue-form button:hover {
+.forms-grid .receive-form button[type="submit"]:hover,
+.forms-grid .issue-form button[type="submit"]:hover {
   background: #1e527f;
   transform: translateY(-1px);
 }
 
-.forms-grid .borrow-item button {
+.forms-grid .borrow-item button[type="submit"] {
   background: #2563eb;
 }
 
-.forms-grid .borrow-item button:hover {
+.forms-grid .borrow-item button[type="submit"]:hover {
   background: #1d4ed8;
   transform: translateY(-1px);
 }
 
-.forms-grid .pullout-item button {
+.forms-grid .pullout-item button[type="submit"] {
   background: #b45309;
 }
 
-.forms-grid .pullout-item button:hover {
+.forms-grid .pullout-item button[type="submit"]:hover {
   background: #92400e;
   transform: translateY(-1px);
 }
 
-.forms-grid .return-item button,
-.forms-grid .repair-item button {
+.forms-grid .return-item button[type="submit"],
+.forms-grid .repair-item button[type="submit"] {
   background: #16835d;
 }
 
-.forms-grid .return-item button:hover,
-.forms-grid .repair-item button:hover {
+.forms-grid .return-item button[type="submit"]:hover,
+.forms-grid .repair-item button[type="submit"]:hover {
   background: #116b4b;
   transform: translateY(-1px);
 }
@@ -720,6 +711,11 @@
 .forms-grid button:focus-visible {
   outline: 3px solid rgba(18, 59, 99, 0.25);
   outline-offset: 2px;
+}
+
+.forms-grid button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 .forms-grid .borrow-item button:focus-visible {
@@ -737,7 +733,7 @@
 
 .forms-grid [role="alert"] {
   margin: 0;
-  color: #b91c1c;
+  color: var(--color-danger);
 }
 
 @media (max-width: 800px) {

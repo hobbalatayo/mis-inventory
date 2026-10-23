@@ -2,7 +2,7 @@ import { useState } from "react";
 import aceLogo from "./assets/ace-medical-center-bohol.png";
 import "./App.css";
 import { z } from "zod";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { NavLink, useLocation, useNavigate } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -213,7 +213,7 @@ function App() {
     register: registerReceive,
     handleSubmit: handleReceiveSubmit,
     reset: resetReceive,
-    formState: { errors: receiveErrors },
+    formState: { errors: receiveErrors, isSubmitting: isReceiving },
   } = useForm({
     resolver: zodResolver(receiveSchema),
     defaultValues: {
@@ -229,7 +229,7 @@ function App() {
     handleSubmit: handleIssueSubmit,
     reset: resetIssue,
     formState: { errors: issueErrors },
-    watch: watchIssue,
+    control: controlIssue,
     setValue: setIssueValue,
   } = useForm({
     resolver: zodResolver(issueSchema),
@@ -240,11 +240,13 @@ function App() {
     },
   });
 
+  const issueTag = useWatch({ control: controlIssue, name: "propertyTag" });
+
   const {
     register: registerBorrow,
     handleSubmit: handleBorrowSubmit,
     reset: resetBorrow,
-    watch: watchBorrow,
+    control: controlBorrow,
     setValue: setBorrowValue,
     formState: { errors: borrowErrors },
   } = useForm({
@@ -310,7 +312,7 @@ function App() {
   const apiInventoryItems = inventoryApiQuery.data ?? [];
   const apiTransactions = transactionsApiQuery.data ?? [];
 
-  const issueSearchText = watchIssue("propertyTag").trim().toLowerCase();
+  const issueSearchText = (issueTag ?? "").trim().toLowerCase();
 
   const issueSuggestions = apiInventoryItems.filter((item) => {
     const isAvailable = item.status === "IN_STOCK";
@@ -320,8 +322,8 @@ function App() {
 
     return isAvailable && matchesSearch;
   });
-
-  const borrowSearchText = watchBorrow("propertyTag").trim().toLowerCase();
+  const borrowTag = useWatch({ control: controlBorrow, name: "propertyTag" });
+  const borrowSearchText = (borrowTag ?? "").trim().toLowerCase();
 
   const borrowSuggestions = apiInventoryItems.filter((item) => {
     const isAvailable = item.status === "IN_STOCK";
@@ -363,6 +365,16 @@ function App() {
     data: EditFormData,
   ): Promise<boolean> => {
     setEditError("");
+
+    const duplicateTag = apiInventoryItems.some(
+      (item) =>
+        item.propertyTag.toLowerCase() === data.propertyTag.toLowerCase() &&
+        item.id !== itemId,
+    );
+    if (duplicateTag) {
+      setEditError("Another item already uses that property tag.");
+      return false;
+    }
 
     try {
       const updatedItem = await updateInventoryMutation.mutateAsync({
@@ -613,7 +625,7 @@ function App() {
         propertyTag: updatedItem.propertyTag,
         type: "Returned",
         date: new Date().toISOString(),
-        details: `Returned to ${updatedItem.location}`,
+        details: `${itemToReturn.custodian ?? "Previous custodian not recorded"} returned the item to ${updatedItem.location}`,
       });
 
       resetReturn();
@@ -1007,23 +1019,29 @@ function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          {[...apiTransactions].reverse().map((transaction) => (
-                            <tr key={transaction.id}>
-                              <td>
-                                {new Date(transaction.date).toLocaleString(
-                                  "en-PH",
-                                  {
-                                    timeZone: "Asia/Manila",
-                                    dateStyle: "medium",
-                                    timeStyle: "short",
-                                  },
-                                )}
-                              </td>
-                              <td>{transaction.propertyTag}</td>
-                              <td>{transaction.type}</td>
-                              <td>{transaction.details}</td>
-                            </tr>
-                          ))}
+                          {[...apiTransactions]
+                            .sort(
+                              (a, b) =>
+                                new Date(b.date).getTime() -
+                                new Date(a.date).getTime(),
+                            )
+                            .map((transaction) => (
+                              <tr key={transaction.id}>
+                                <td>
+                                  {new Date(transaction.date).toLocaleString(
+                                    "en-PH",
+                                    {
+                                      timeZone: "Asia/Manila",
+                                      dateStyle: "medium",
+                                      timeStyle: "short",
+                                    },
+                                  )}
+                                </td>
+                                <td>{transaction.propertyTag}</td>
+                                <td>{transaction.type}</td>
+                                <td>{transaction.details}</td>
+                              </tr>
+                            ))}
                         </tbody>
                       </table>
                     )}
@@ -1033,11 +1051,11 @@ function App() {
                 {activeSection === "inventory" && selectedItem && (
                   <>
                     <ItemDetails
+                      key={selectedItem.id}
                       item={selectedItem}
                       onClose={() => setSelectedItemId(null)}
                       onSave={handleEditItem}
                     />
-
                     {editError && <p role="alert">{editError}</p>}
                   </>
                 )}
@@ -1106,7 +1124,9 @@ function App() {
                         )}
 
                         {formError && <p role="alert">{formError}</p>}
-                        <button type="submit">Receive Item</button>
+                        <button type="submit" disabled={isReceiving}>
+                          {isReceiving ? "Saving..." : "Receive Item"}
+                        </button>
                       </form>
                     </section>
                   )}
@@ -1122,6 +1142,7 @@ function App() {
                             id="issue-item"
                             autoComplete="off"
                             {...registerIssue("propertyTag", {
+                              onBlur: () => setShowIssueSuggestions(false),
                               onChange: () => setShowIssueSuggestions(true),
                             })}
                             placeholder="Type a property tag or item name..."
@@ -1220,6 +1241,7 @@ function App() {
                             autoComplete="off"
                             {...registerBorrow("propertyTag", {
                               onChange: () => setShowBorrowSuggestions(true),
+                              onBlur: () => setShowBorrowSuggestions(false),
                             })}
                             placeholder="Type a property tag or item name..."
                             onFocus={() => setShowBorrowSuggestions(true)}

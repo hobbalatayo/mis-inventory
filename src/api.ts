@@ -10,6 +10,20 @@ export async function fetchInventoryItems(): Promise<InventoryItem[]> {
   return response.json();
 }
 
+export async function fetchTransactionsForItem(
+  itemId: number,
+): Promise<InventoryTransaction[]> {
+  const response = await fetch(
+    `http://localhost:3000/transactions?itemId=${itemId}`,
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch transactions for item.");
+  }
+
+  return response.json();
+}
+
 export async function createInventoryItem(
   item: Omit<InventoryItem, "id">,
 ): Promise<InventoryItem> {
@@ -76,3 +90,5 @@ export async function fetchInventoryTransactions(): Promise<
 
   return response.json();
 }
+
+
