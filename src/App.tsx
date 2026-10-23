@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import aceLogo from "./assets/ace-medical-center-bohol.png";
 import "./App.css";
 import { z } from "zod";
@@ -91,6 +91,30 @@ function InventoryStatusFilter({
 
 function ItemDetails({ item, onClose, onSave }: ItemDetailsProps) {
   const [isEditing, setIsEditing] = useState(false);
+
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    const root = document.documentElement;
+    const body = document.body;
+    const previousRootOverflow = root.style.overflow;
+    const previousBodyOverflow = body.style.overflow;
+
+    if (dialog) {
+      root.style.overflow = "hidden";
+      body.style.overflow = "hidden";
+      if (!dialog.open) {
+        dialog.showModal();
+      }
+    }
+
+    return () => {
+      root.style.overflow = previousRootOverflow;
+      body.style.overflow = previousBodyOverflow;
+    };
+  }, []);
+
   const {
     register: registerEdit,
     handleSubmit: handleEditSubmit,
@@ -116,46 +140,73 @@ function ItemDetails({ item, onClose, onSave }: ItemDetailsProps) {
   };
 
   return (
-    <section className="item-details">
-      <h2>{isEditing ? "Edit Item" : "Item Details"}</h2>
+    <dialog
+      ref={dialogRef}
+      className="item-details"
+      aria-labelledby="item-details-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
+      <header className="item-details-header">
+        <div>
+          <p className="item-details-eyebrow">Inventory record</p>
+          <h2 id="item-details-title">
+            {isEditing ? "Edit Item" : "Item Details"}
+          </h2>
+        </div>
+        <button
+          className="item-details-icon-button"
+          type="button"
+          aria-label="Close item details"
+          onClick={onClose}
+        >
+          <span aria-hidden="true">×</span>
+        </button>
+      </header>
 
       {!isEditing && (
-        <>
-          <p>
-            <strong>Property Tag:</strong> {item.propertyTag}
-          </p>
-
-          <p>
-            <strong>Item Name:</strong> {item.name}
-          </p>
-
-          <p>
-            <strong>Serial Number:</strong> {item.serialNumber}
-          </p>
-
-          <p>
-            <strong>Location:</strong> {item.location}
-          </p>
-
-          <p>
-            <strong>Status:</strong> {statusLabels[item.status]}
-          </p>
-          <p>
-            <strong>Custodian:</strong> {item.custodian ?? "Not assigned"}
-          </p>
-        </>
+        <dl className="item-details-grid">
+          <div className="item-detail">
+            <dt>Property tag</dt>
+            <dd>{item.propertyTag}</dd>
+          </div>
+          <div className="item-detail">
+            <dt>Item name</dt>
+            <dd>{item.name}</dd>
+          </div>
+          <div className="item-detail">
+            <dt>Serial number</dt>
+            <dd>{item.serialNumber || "Not recorded"}</dd>
+          </div>
+          <div className="item-detail">
+            <dt>Location</dt>
+            <dd>{item.location}</dd>
+          </div>
+          <div className="item-detail">
+            <dt>Status</dt>
+            <dd>
+              <span className="item-status-pill">{statusLabels[item.status]}</span>
+            </dd>
+          </div>
+          <div className="item-detail">
+            <dt>Custodian</dt>
+            <dd>{item.custodian ?? "Not assigned"}</dd>
+          </div>
+        </dl>
       )}
 
-      <div className="item-details-actions">
-        <button type="button" onClick={onClose}>
-          Close Details
-        </button>
-        {!isEditing && (
-          <button type="button" onClick={() => setIsEditing(true)}>
+      {!isEditing && (
+        <div className="item-details-actions">
+          <button className="item-details-secondary" type="button" onClick={onClose}>
+            Close
+          </button>
+          <button className="item-details-primary" type="button" onClick={() => setIsEditing(true)}>
             Edit Item
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {isEditing && (
         <form
@@ -165,10 +216,12 @@ function ItemDetails({ item, onClose, onSave }: ItemDetailsProps) {
           <label>
             Property Tag
             <input type="text" {...registerEdit("propertyTag")} />
+            {editErrors.propertyTag && (
+              <span className="item-edit-error" role="alert">
+                {editErrors.propertyTag.message}
+              </span>
+            )}
           </label>
-          {editErrors.propertyTag && (
-            <p role="alert">{editErrors.propertyTag.message}</p>
-          )}
           <label>
             Serial Number
             <input type="text" {...registerEdit("serialNumber")} />
@@ -176,19 +229,36 @@ function ItemDetails({ item, onClose, onSave }: ItemDetailsProps) {
           <label>
             Item Name
             <input type="text" {...registerEdit("name")} />
+            {editErrors.name && (
+              <span className="item-edit-error" role="alert">
+                {editErrors.name.message}
+              </span>
+            )}
           </label>
-          {editErrors.name && <p role="alert">{editErrors.name.message}</p>}
           <label>
             Location
             <input type="text" {...registerEdit("location")} />
+            {editErrors.location && (
+              <span className="item-edit-error" role="alert">
+                {editErrors.location.message}
+              </span>
+            )}
           </label>
-          {editErrors.location && (
-            <p role="alert">{editErrors.location.message}</p>
-          )}
-          <button type="submit">Save Changes</button>
+          <div className="item-edit-actions">
+            <button
+              className="item-details-secondary"
+              type="button"
+              onClick={() => setIsEditing(false)}
+            >
+              Cancel
+            </button>
+            <button className="item-details-primary" type="submit">
+              Save Changes
+            </button>
+          </div>
         </form>
       )}
-    </section>
+    </dialog>
   );
 }
 
