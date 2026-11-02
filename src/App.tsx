@@ -187,7 +187,9 @@ function ItemDetails({ item, onClose, onSave }: ItemDetailsProps) {
           <div className="item-detail">
             <dt>Status</dt>
             <dd>
-              <span className="item-status-pill">{statusLabels[item.status]}</span>
+              <span className="item-status-pill">
+                {statusLabels[item.status]}
+              </span>
             </dd>
           </div>
           <div className="item-detail">
@@ -199,10 +201,18 @@ function ItemDetails({ item, onClose, onSave }: ItemDetailsProps) {
 
       {!isEditing && (
         <div className="item-details-actions">
-          <button className="item-details-secondary" type="button" onClick={onClose}>
+          <button
+            className="item-details-secondary"
+            type="button"
+            onClick={onClose}
+          >
             Close
           </button>
-          <button className="item-details-primary" type="button" onClick={() => setIsEditing(true)}>
+          <button
+            className="item-details-primary"
+            type="button"
+            onClick={() => setIsEditing(true)}
+          >
             Edit Item
           </button>
         </div>
