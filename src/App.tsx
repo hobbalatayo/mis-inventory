@@ -6,6 +6,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { NavLink, useLocation, useNavigate } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { InventoryItemRow } from "./components/InventoryItemRow";
 import type {
   AssetStatus,
   InventoryItem,
@@ -978,6 +979,11 @@ function App() {
                     </section>
                   </>
                 )}
+
+                {filteredItems.slice(0, 3).map((item) => (
+                  <InventoryItemRow key={item.id} item={item} />
+                ))}
+
                 {activeSection === "inventory" && (
                   <section className="dashboard-panel" id="inventory">
                     <div className="panel-heading">
