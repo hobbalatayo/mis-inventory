@@ -36,7 +36,7 @@ import {
 
 import type { EditFormData } from "./schema";
 
-const statusLabels: Record<AssetStatus, string> = {
+const statusLabel: Record<AssetStatus, string> = {
   IN_STOCK: "Available",
   ISSUED: "Issued",
   ON_LOAN: "On Loan",
@@ -189,7 +189,7 @@ function ItemDetails({ item, onClose, onSave }: ItemDetailsProps) {
             <dt>Status</dt>
             <dd>
               <span className="item-status-pill">
-                {statusLabels[item.status]}
+                {statusLabel[item.status]}
               </span>
             </dd>
           </div>
@@ -981,7 +981,12 @@ function App() {
                 )}
 
                 {filteredItems.slice(0, 3).map((item) => (
-                  <InventoryItemRow key={item.id} item={item} />
+                  <InventoryItemRow
+                    key={item.id}
+                    item={item}
+                    statusLabel={statusLabel[item.status]}
+                    onSelect={() => setSelectedItemId(item.id)}
+                  />
                 ))}
 
                 {activeSection === "inventory" && (
@@ -1043,7 +1048,7 @@ function App() {
                                   <span
                                     className={`status-badge status-${item.status.toLowerCase()}`}
                                   >
-                                    {statusLabels[item.status]}
+                                    {statusLabel[item.status]}
                                   </span>
                                 </td>
                                 <td>{item.custodian ?? "Not assigned"}</td>

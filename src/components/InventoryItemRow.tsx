@@ -1,9 +1,17 @@
 import type { InventoryItem } from "../type";
 
-export function InventoryItemRow({ item }: { item: InventoryItem }) {
+export function InventoryItemRow({
+  item,
+  statusLabel,
+  onSelect,
+}: {
+  item: InventoryItem;
+  statusLabel: string;
+  onSelect: () => void;
+}) {
   return (
-    <p>
-      {item.propertyTag}: {item.name}: {item.location}: {item.status}:
+    <p onClick={onSelect}>
+      {item.propertyTag} {item.name} {item.location} {statusLabel}
     </p>
   );
 }
