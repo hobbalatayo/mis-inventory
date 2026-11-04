@@ -980,15 +980,6 @@ function App() {
                   </>
                 )}
 
-                {filteredItems.slice(0, 3).map((item) => (
-                  <InventoryItemRow
-                    key={item.id}
-                    item={item}
-                    statusLabel={statusLabel[item.status]}
-                    onSelect={() => setSelectedItemId(item.id)}
-                  />
-                ))}
-
                 {activeSection === "inventory" && (
                   <section className="dashboard-panel" id="inventory">
                     <div className="panel-heading">
@@ -1019,7 +1010,7 @@ function App() {
                         running.
                       </p>
                     )}
-
+  
                     <div className="table-scroll">
                       <table>
                         <thead>
@@ -1032,27 +1023,16 @@ function App() {
                             <th>Custodian</th>
                           </tr>
                         </thead>
+
                         <tbody>
                           {filteredItems.length > 0 ? (
                             filteredItems.map((item) => (
-                              <tr
+                              <InventoryItemRow
                                 key={item.id}
-                                onClick={() => setSelectedItemId(item.id)}
-                                className="inventory-row"
-                              >
-                                <td>{item.propertyTag}</td>
-                                <td>{item.name}</td>
-                                <td>{item.serialNumber}</td>
-                                <td>{item.location}</td>
-                                <td>
-                                  <span
-                                    className={`status-badge status-${item.status.toLowerCase()}`}
-                                  >
-                                    {statusLabel[item.status]}
-                                  </span>
-                                </td>
-                                <td>{item.custodian ?? "Not assigned"}</td>
-                              </tr>
+                                item={item}
+                                statusLabel={statusLabel[item.status]}
+                                onSelect={() => setSelectedItemId(item.id)}
+                              />
                             ))
                           ) : !inventoryApiQuery.isLoading &&
                             !inventoryApiQuery.isError ? (
