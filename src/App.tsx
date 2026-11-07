@@ -7,6 +7,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { NavLink, useLocation, useNavigate } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { InventoryItemRow } from "./components/InventoryItemRow";
+import { InventoryQuickSearch } from "./components/InventoryQuickSearch";
+
 import type {
   AssetStatus,
   InventoryItem,
@@ -982,6 +984,7 @@ function App() {
 
                 {activeSection === "inventory" && (
                   <section className="dashboard-panel" id="inventory">
+                    <InventoryQuickSearch items={apiInventoryItems} />
                     <div className="panel-heading">
                       <div>
                         <h2>Inventory Records</h2>
@@ -1010,7 +1013,7 @@ function App() {
                         running.
                       </p>
                     )}
-  
+
                     <div className="table-scroll">
                       <table>
                         <thead>
