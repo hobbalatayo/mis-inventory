@@ -1,5 +1,3 @@
-
-
 import type { InventoryItem } from "../type";
 import { useState } from "react";
 
@@ -20,7 +18,6 @@ export function InventoryQuickSearch({ items }: { items: InventoryItem[] }) {
         value={searchText}
         onChange={(event) => setSearchText(event.target.value)}
       />
-      <p>You typed: {searchText}</p>
 
       <p>
         Showing {matches.length} of {items.length} items.
