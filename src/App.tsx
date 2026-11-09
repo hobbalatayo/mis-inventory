@@ -8,6 +8,7 @@ import { NavLink, useLocation, useNavigate } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { InventoryItemRow } from "./components/InventoryItemRow";
 import { InventoryQuickSearch } from "./components/InventoryQuickSearch";
+import { InventoryLoadCheck } from "./components/InventoryLoadCheck";
 
 import type {
   AssetStatus,
@@ -984,6 +985,7 @@ function App() {
 
                 {activeSection === "inventory" && (
                   <section className="dashboard-panel" id="inventory">
+                    <InventoryLoadCheck />
                     <InventoryQuickSearch items={apiInventoryItems} />
                     <div className="panel-heading">
                       <div>
