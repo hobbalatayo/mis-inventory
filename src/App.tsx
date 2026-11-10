@@ -6,6 +6,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { NavLink, useLocation, useNavigate } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { InventoryLoadCheck } from "./components/InventoryLoadCheck";
 import type {
   AssetStatus,
   InventoryItem,
@@ -980,6 +981,7 @@ function App() {
                 )}
                 {activeSection === "inventory" && (
                   <section className="dashboard-panel" id="inventory">
+                    <InventoryLoadCheck />
                     <div className="panel-heading">
                       <div>
                         <h2>Inventory Records</h2>

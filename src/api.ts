@@ -10,6 +10,7 @@ export async function fetchInventoryItems(): Promise<InventoryItem[]> {
   return response.json();
 }
 
+
 export async function fetchTransactionsForItem(
   itemId: number,
 ): Promise<InventoryTransaction[]> {
