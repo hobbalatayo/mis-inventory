@@ -91,5 +91,3 @@ export async function fetchInventoryTransactions(): Promise<
 
   return response.json();
 }
-
-

@@ -6,7 +6,14 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { NavLink, useLocation, useNavigate } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+<<<<<<< HEAD
 import { InventoryLoadCheck } from "./components/InventoryLoadCheck";
+=======
+import { InventoryItemRow } from "./components/InventoryItemRow";
+import { InventoryQuickSearch } from "./components/InventoryQuickSearch";
+import { InventoryLoadCheck } from "./components/InventoryLoadCheck";
+
+>>>>>>> lesson-2-4-manual-fetch
 import type {
   AssetStatus,
   InventoryItem,
@@ -36,7 +43,7 @@ import {
 
 import type { EditFormData } from "./schema";
 
-const statusLabels: Record<AssetStatus, string> = {
+const statusLabel: Record<AssetStatus, string> = {
   IN_STOCK: "Available",
   ISSUED: "Issued",
   ON_LOAN: "On Loan",
@@ -189,7 +196,7 @@ function ItemDetails({ item, onClose, onSave }: ItemDetailsProps) {
             <dt>Status</dt>
             <dd>
               <span className="item-status-pill">
-                {statusLabels[item.status]}
+                {statusLabel[item.status]}
               </span>
             </dd>
           </div>
@@ -979,9 +986,14 @@ function App() {
                     </section>
                   </>
                 )}
+
                 {activeSection === "inventory" && (
                   <section className="dashboard-panel" id="inventory">
                     <InventoryLoadCheck />
+<<<<<<< HEAD
+=======
+                    <InventoryQuickSearch items={apiInventoryItems} />
+>>>>>>> lesson-2-4-manual-fetch
                     <div className="panel-heading">
                       <div>
                         <h2>Inventory Records</h2>
@@ -1023,27 +1035,16 @@ function App() {
                             <th>Custodian</th>
                           </tr>
                         </thead>
+
                         <tbody>
                           {filteredItems.length > 0 ? (
                             filteredItems.map((item) => (
-                              <tr
+                              <InventoryItemRow
                                 key={item.id}
-                                onClick={() => setSelectedItemId(item.id)}
-                                className="inventory-row"
-                              >
-                                <td>{item.propertyTag}</td>
-                                <td>{item.name}</td>
-                                <td>{item.serialNumber}</td>
-                                <td>{item.location}</td>
-                                <td>
-                                  <span
-                                    className={`status-badge status-${item.status.toLowerCase()}`}
-                                  >
-                                    {statusLabels[item.status]}
-                                  </span>
-                                </td>
-                                <td>{item.custodian ?? "Not assigned"}</td>
-                              </tr>
+                                item={item}
+                                statusLabel={statusLabel[item.status]}
+                                onSelect={() => setSelectedItemId(item.id)}
+                              />
                             ))
                           ) : !inventoryApiQuery.isLoading &&
                             !inventoryApiQuery.isError ? (
